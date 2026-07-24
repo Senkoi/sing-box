@@ -27,18 +27,17 @@ esac
 # 检查 sing-box 最新版本
 check_latest_sing-box() {
   # 检查是否强制指定版本
-  local FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g')
+  local FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- https://raw.githubusercontent.com/Senkoi/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g')
 
   # 没有强制指定版本时，获取最新版本
   if grep -q '.' <<< "$FORCE_VERSION"; then
     echo "$FORCE_VERSION"
     return
   else
-    local VERSION_LIST=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- https://api.github.com/repos/SagerNet/sing-box/releases | sed -n '/tag_name/ s/^[ ]*//gp')
-    local LATEST_VERSION=$(awk -F '["v-]' '/tag_name/{print $5}' <<< "$VERSION_LIST" | sort -Vr | sed -n '1p')
+    local VERSION_LIST=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- https://api.github.com/repos/shtorm-7/sing-box-extended/releases | sed -n '/tag_name/ s/^[ ]*//gp')
 
-    # 获取最终版本号
-    awk -F '["v]' -v var="tag_name.*$LATEST_VERSION" '$0 ~ var {print $5; exit}' <<< "$VERSION_LIST"
+    # 获取最终版本号，保留 extended 后缀，例如 1.13.14-extended-2.5.2
+    awk -F '"' '/tag_name/{print $4}' <<< "$VERSION_LIST" | sed 's/^[vV]//' | sort -Vr | sed -n '1p' 
   fi
 }
 
@@ -47,7 +46,7 @@ install() {
   # 下载 sing-box
   echo "正在下载 sing-box ..."
   local ONLINE=$(check_latest_sing-box)
-  wget https://github.com/SagerNet/sing-box/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -O- | tar xz -C ${WORK_DIR} sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box && mv ${WORK_DIR}/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box ${WORK_DIR}/sing-box && rm -rf ${WORK_DIR}/sing-box-$ONLINE-linux-$SING_BOX_ARCH
+  wget https://github.com/shtorm-7/sing-box-extended/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -O- | tar xz -C ${WORK_DIR} sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box && mv ${WORK_DIR}/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box ${WORK_DIR}/sing-box && rm -rf ${WORK_DIR}/sing-box-$ONLINE-linux-$SING_BOX_ARCH
 
   # 下载 jq
   echo "正在下载 jq ..."
@@ -1417,7 +1416,7 @@ update_sing-box() {
   if [ -n "$ONLINE" ]; then
     if [[ "$ONLINE" != "$LOCAL" ]]; then
       cp -f ${WORK_DIR}/sing-box /tmp/sing-box.bak
-      wget https://github.com/SagerNet/sing-box/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -O- | tar xz -C /tmp sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box
+      wget https://github.com/shtorm-7/sing-box-extended/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -O- | tar xz -C /tmp sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box
       mv /tmp/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box ${WORK_DIR}/sing-box
       local SING_BOX_PID_OLD=$(ps aux | grep '[s]ing-box run' | awk '{print $1}')
       kill -9 ${SING_BOX_PID_OLD}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # 当前脚本版本号
-VERSION='v1.3.17 (2026.07.20)'
+VERSION='v1.3.18 (2026.07.24)'
 
 # Github 反代加速代理
 GITHUB_PROXY=('https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/')
@@ -9,6 +9,11 @@ GITHUB_PROXY=('https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/')
 # 各变量默认值
 TEMP_DIR='/tmp/sing-box'
 WORK_DIR='/etc/sing-box'
+EXT_MANAGER_API_PORT_DEFAULT=8080
+EXT_NODE_API_PORT_DEFAULT=7000
+EXT_ADMIN_PORT_DEFAULT=8081
+EXT_MANAGER_LISTEN_DEFAULT='127.0.0.1'
+EXT_NODE_MANAGER_SERVER_DEFAULT='127.0.0.1'
 FIREWALL_STATE_DIR="${WORK_DIR}/firewall"
 SERVICE_FIREWALL_STATE_FILE="${FIREWALL_STATE_DIR}/service_ports.list"
 START_PORT_DEFAULT='8881'
@@ -22,7 +27,7 @@ NODE_TAG=("xtls-reality" "hysteria2" "tuic" "ShadowTLS" "shadowsocks" "trojan" "
 CONSECUTIVE_PORTS=${#PROTOCOL_LIST[@]}
 CDN_DOMAIN=("skk.moe" "ip.sb" "time.is" "cfip.xxxxxxxx.tk" "bestcf.top" "cdn.2020111.xyz" "xn--b6gac.eu.org" "cf.090227.xyz")
 SUBSCRIBE_TEMPLATE="https://raw.githubusercontent.com/fscarmen/client_template/main"
-DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
+DEFAULT_NEWEST_VERSION='1.13.14-extended-2.5.2'
 FINGER_PRINT='chrome'
 STEP_NUM=0      # 当前步骤编号（安装流程中动态递增）
 TOTAL_STEPS=''  # 总步骤数（协议确定后动态计算）
@@ -40,8 +45,8 @@ mkdir -p "$TEMP_DIR"
 
 E[0]="Language:\n 1. English (default) \n 2. 简体中文"
 C[0]="${E[0]}"
-E[1]="1. Add bind_interface option in sb -d menu to bind outbound traffic to a specific NIC; 2. Change v2rayN Hysteria2 Realm config from Finalmask field to ProtoExtraObj; 3. add SIGHUP hot-reload support, replace restart sequences with reload; 4. force base-config regeneration on upgrade to guarantee sing-box check passes"
-C[1]="1. sb -d 菜单新增「指定网络出口」选项，可为出站流量绑定特定网卡; 2. v2rayN 的 Hysteria2 Realm 配置从 Finalmask 字段改为 ProtoExtraObj; 3. 新增 SIGHUP 热更支持，用 reload 替换重启流程; 4. 新增 SIGHUP 热更支持，用 reload 替换重启流程; 4. 升级时强制重置基础配置至新版格式，保证兼容性"
+E[1]="1. Use sing-box-extended core; 2. Add sing-box-extended manager/admin panel and node mode settings; 3. Support install prompts, KV parameters and sb -d post-install management"
+C[1]="1. 使用 sing-box-extended 内核; 2. 增加 sing-box-extended 管理端/Admin Panel 与节点端设置; 3. 支持安装交互、KV 参数和 sb -d 安装后管理"
 E[2]="Downloading Sing-box. Please wait a seconds ..."
 C[2]="下载 Sing-box 中，请稍等 ..."
 E[3]="Input errors up to 5 times.The script is aborted."
@@ -388,6 +393,44 @@ E[174]="Failed to update configuration. Please check manually. Suggestion: reins
 C[174]="更新配置后仍然无法检查成功，建议重装脚本"
 E[175]="Update base configuration? (Node configs will remain unaffected; only log, outbounds, endpoints, route, experimental, dns, ntp, http_clients, etc., will be reset) [Y/n]:"
 C[175]="是否更新基础配置？（不影响节点配置，仅重置 log、outbounds、endpoints、route、experimental、dns、ntp、http_clients）[Y/n]:"
+E[176]="Enable sing-box-extended manager/admin panel? [y/N]:"
+C[176]="是否启用 sing-box-extended 管理端/Admin Panel？[y/N]:"
+E[177]="Enable sing-box-extended node mode? [y/N]:"
+C[177]="是否启用 sing-box-extended 节点端模式？[y/N]:"
+E[178]="Extended manager/node settings  (manager: \${EXT_MANAGER_STATUS:-off}, node: \${EXT_NODE_STATUS:-off})"
+C[178]="Extended 管理端/节点端设置  (管理端: \${EXT_MANAGER_STATUS:-关闭}, 节点端: \${EXT_NODE_STATUS:-关闭})"
+E[179]="Extended manager/admin panel"
+C[179]="Extended 管理端/Admin Panel"
+E[180]="Extended node"
+C[180]="Extended 节点端"
+E[181]="Enable? [y/N]:"
+C[181]="是否启用？[y/N]:"
+E[182]="Disable? [y/N]:"
+C[182]="是否关闭？[y/N]:"
+E[183]="Listen address (Default: \${EXT_MANAGER_LISTEN_DEFAULT}):"
+C[183]="监听地址 (默认: \${EXT_MANAGER_LISTEN_DEFAULT}):"
+E[184]="Manager API port (Default: \${EXT_MANAGER_API_PORT_DEFAULT}):"
+C[184]="Manager API 端口 (默认: \${EXT_MANAGER_API_PORT_DEFAULT}):"
+E[185]="Node manager API port (Default: \${EXT_NODE_API_PORT_DEFAULT}):"
+C[185]="节点管理 API 端口 (默认: \${EXT_NODE_API_PORT_DEFAULT}):"
+E[186]="Admin panel port (Default: \${EXT_ADMIN_PORT_DEFAULT}):"
+C[186]="Admin Panel 端口 (默认: \${EXT_ADMIN_PORT_DEFAULT}):"
+E[187]="API key (leave blank to generate):"
+C[187]="API Key (留空自动生成):"
+E[188]="Manager server address (Default: \${EXT_NODE_MANAGER_SERVER_DEFAULT}):"
+C[188]="管理端服务器地址 (默认: \${EXT_NODE_MANAGER_SERVER_DEFAULT}):"
+E[189]="Node UUID (leave blank to generate):"
+C[189]="节点 UUID (留空自动生成):"
+E[190]="Extended manager URL"
+C[190]="Extended 管理面板地址"
+E[191]="Extended manager API"
+C[191]="Extended 管理端 API"
+E[192]="Extended node manager API"
+C[192]="Extended 节点管理 API"
+E[193]="Extended API key"
+C[193]="Extended API Key"
+E[194]="Extended node UUID"
+C[194]="Extended 节点 UUID"
 
 # 自定义字体彩色，read 函数
 warning() { echo -e "\033[31m\033[01m$*\033[0m"; }  # 红色
@@ -417,7 +460,7 @@ text() {
 # 根据 INSTALL_PROTOCOLS 计算安装流程总步骤数
 # sing-box 协议分类：Reality 类 (b/j/k)、Hysteria2(c)、WS 类 (h/i)
 calc_install_steps() {
-  local _total=5  # 固定步骤：协议选择、起始端口、VPS IP、UUID、节点名
+  local _total=7  # 固定步骤：协议选择、起始端口、VPS IP、管理端、节点端、UUID、节点名
   local HAS_REALITY=false HAS_WS=false HAS_HY2=false
   for _P in "${INSTALL_PROTOCOLS[@]}"; do
     [[ "$_P" =~ ^[bjk]$ ]] && HAS_REALITY=true
@@ -428,6 +471,7 @@ calc_install_steps() {
   $HAS_REALITY && (( _total++ ))                # Reality 私钥
   $HAS_WS && (( _total++ ))                     # CDN / 域名
   # Hysteria2 Realm / WARP / Port Hopping are protocol sub-options and are not counted as install steps.
+  # Extended manager/node detailed fields are sub-options and are not counted as install steps.
   [ "$IS_ARGO" = 'is_argo' ] && (( _total++ ))  # Argo 域名
   TOTAL_STEPS=$_total
 }
@@ -437,7 +481,7 @@ check_cdn() {
   local PROXY CODE PID CMD
   local _WAIT_COUNT=40
   local PIDS=()
-  local API_URL='https://api.github.com/repos/SagerNet/sing-box/releases'
+  local API_URL='https://api.github.com/repos/shtorm-7/sing-box-extended/releases'
 
   # 确定下载工具：优先 wget，次选 curl
   if command -v wget >/dev/null 2>&1; then
@@ -686,6 +730,12 @@ change_config() {
   local BIND_IFACE_NOW=$(awk -F '"' '/"bind_interface"[[:space:]]*:[[:space:]]*"/{print $4}' "${WORK_DIR}/conf/01_outbounds.json" 2>/dev/null)
   MENU_IDX+=(169) && MENU_KEY+=(bindinterface) && MENU_VAL+=("${BIND_IFACE_NOW:-default}")
 
+  # sing-box-extended 管理端 / 节点端
+  fetch_extended_settings
+  EXT_MANAGER_STATUS=$([ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && text 28 || text 27)
+  EXT_NODE_STATUS=$([ "$IS_EXT_NODE" = 'is_ext_node' ] && text 28 || text 27)
+  MENU_IDX+=(178) && MENU_KEY+=(extended) && MENU_VAL+=("${EXT_MANAGER_STATUS}/${EXT_NODE_STATUS}")
+
   # Hysteria2 带宽和端口跳跃（仅在 Hysteria2 已安装时显示）
   if ls ${WORK_DIR}/conf/*_${NODE_TAG[1]}_inbounds.json >/dev/null 2>&1; then
     local HY2_LINE=$(grep 'type: hysteria2' ${WORK_DIR}/subscribe/proxies)
@@ -856,6 +906,9 @@ change_config() {
     return
   elif [ "$KEY" = "customroute" ]; then
     custom_route_menu
+    return
+  elif [ "$KEY" = "extended" ]; then
+    extended_settings_menu
     return
   elif [ "$KEY" = "fingerprint" ]; then
     # 修改客户端指纹
@@ -1265,6 +1318,335 @@ jq_exec() {
   else
     jq "$@"
   fi
+}
+
+bool_enabled() {
+  [[ "${1,,}" =~ ^(true|1|y|yes|on|enable|enabled)$ ]]
+}
+
+is_public_listen() {
+  local LISTEN_VALUE=$1
+  [[ -z "$LISTEN_VALUE" || "$LISTEN_VALUE" = "127.0.0.1" || "$LISTEN_VALUE" = "localhost" || "$LISTEN_VALUE" = "::1" ]] && return 1
+  return 0
+}
+
+valid_port() {
+  [[ "$1" =~ ^[1-9][0-9]{1,4}$ && "$1" -ge "$MIN_PORT" && "$1" -le "$MAX_PORT" ]]
+}
+
+generate_api_key() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 16
+  else
+    cat /proc/sys/kernel/random/uuid | tr -d '-'
+  fi
+}
+
+normalize_extended_settings() {
+  if bool_enabled "$EXT_MANAGER" || [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+    IS_EXT_MANAGER=is_ext_manager
+  else
+    unset IS_EXT_MANAGER
+  fi
+
+  if bool_enabled "$EXT_NODE" || [ "$IS_EXT_NODE" = 'is_ext_node' ]; then
+    IS_EXT_NODE=is_ext_node
+  else
+    unset IS_EXT_NODE
+  fi
+
+  EXT_MANAGER_LISTEN=${EXT_MANAGER_LISTEN:-${MANAGER_LISTEN:-$EXT_MANAGER_LISTEN_DEFAULT}}
+  EXT_MANAGER_API_PORT=${EXT_MANAGER_API_PORT:-${MANAGER_API_PORT:-$EXT_MANAGER_API_PORT_DEFAULT}}
+  EXT_NODE_API_PORT=${EXT_NODE_API_PORT:-${NODE_MANAGER_API_PORT:-$EXT_NODE_API_PORT_DEFAULT}}
+  EXT_ADMIN_PORT=${EXT_ADMIN_PORT:-${ADMIN_PANEL_PORT:-$EXT_ADMIN_PORT_DEFAULT}}
+  EXT_NODE_MANAGER_SERVER=${EXT_NODE_MANAGER_SERVER:-${MANAGER_SERVER:-$EXT_NODE_MANAGER_SERVER_DEFAULT}}
+  EXT_NODE_UUID=${EXT_NODE_UUID:-${NODE_UUID}}
+
+  valid_port "$EXT_MANAGER_API_PORT" || EXT_MANAGER_API_PORT=$EXT_MANAGER_API_PORT_DEFAULT
+  valid_port "$EXT_NODE_API_PORT" || EXT_NODE_API_PORT=$EXT_NODE_API_PORT_DEFAULT
+  valid_port "$EXT_ADMIN_PORT" || EXT_ADMIN_PORT=$EXT_ADMIN_PORT_DEFAULT
+
+  if [[ "$EXT_NODE_UUID" != "" && ! "${EXT_NODE_UUID,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then
+    unset EXT_NODE_UUID
+  fi
+
+  [[ "$IS_EXT_MANAGER" = 'is_ext_manager' || "$IS_EXT_NODE" = 'is_ext_node' ]] && EXT_API_KEY=${EXT_API_KEY:-${MANAGER_API_KEY:-$(generate_api_key)}}
+  [ "$IS_EXT_NODE" = 'is_ext_node' ] && EXT_NODE_UUID=${EXT_NODE_UUID:-$(cat /proc/sys/kernel/random/uuid)}
+
+  if [ "$IS_EXT_NODE" = 'is_ext_node' ] && [ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && [[ -z "$EXT_NODE_MANAGER_SERVER" || "$EXT_NODE_MANAGER_SERVER" = "$EXT_NODE_MANAGER_SERVER_DEFAULT" ]]; then
+    EXT_NODE_MANAGER_SERVER="$EXT_MANAGER_LISTEN"
+  fi
+}
+
+input_extended_settings() {
+  normalize_extended_settings
+
+  if [[ "$NONINTERACTIVE_INSTALL" = 'noninteractive_install' || "$IS_FAST_INSTALL" = 'is_fast_install' ]]; then
+    return
+  fi
+
+  local CHOOSE_EXT
+  (( STEP_NUM++ )) || true
+  reading "\n ${TOTAL_STEPS:+(${STEP_NUM}/${TOTAL_STEPS}) }$(text 176) " CHOOSE_EXT
+  if [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]]; then
+    IS_EXT_MANAGER=is_ext_manager
+    EXT_MANAGER_LISTEN_DEFAULT=${EXT_MANAGER_LISTEN:-$EXT_MANAGER_LISTEN_DEFAULT}
+    reading " $(text 183) " EXT_MANAGER_LISTEN
+    EXT_MANAGER_LISTEN=${EXT_MANAGER_LISTEN:-$EXT_MANAGER_LISTEN_DEFAULT}
+    reading " $(text 184) " EXT_MANAGER_API_PORT
+    EXT_MANAGER_API_PORT=${EXT_MANAGER_API_PORT:-$EXT_MANAGER_API_PORT_DEFAULT}
+    reading " $(text 185) " EXT_NODE_API_PORT
+    EXT_NODE_API_PORT=${EXT_NODE_API_PORT:-$EXT_NODE_API_PORT_DEFAULT}
+    reading " $(text 186) " EXT_ADMIN_PORT
+    EXT_ADMIN_PORT=${EXT_ADMIN_PORT:-$EXT_ADMIN_PORT_DEFAULT}
+    reading " $(text 187) " EXT_API_KEY
+  fi
+
+  (( STEP_NUM++ )) || true
+  reading "\n ${TOTAL_STEPS:+(${STEP_NUM}/${TOTAL_STEPS}) }$(text 177) " CHOOSE_EXT
+  if [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]]; then
+    IS_EXT_NODE=is_ext_node
+    EXT_NODE_MANAGER_SERVER_DEFAULT=${EXT_NODE_MANAGER_SERVER:-$EXT_NODE_MANAGER_SERVER_DEFAULT}
+    reading " $(text 188) " EXT_NODE_MANAGER_SERVER
+    EXT_NODE_MANAGER_SERVER=${EXT_NODE_MANAGER_SERVER:-$EXT_NODE_MANAGER_SERVER_DEFAULT}
+    reading " $(text 185) " EXT_NODE_API_PORT
+    EXT_NODE_API_PORT=${EXT_NODE_API_PORT:-$EXT_NODE_API_PORT_DEFAULT}
+    reading " $(text 187) " EXT_API_KEY
+    reading " $(text 189) " EXT_NODE_UUID
+  fi
+
+  normalize_extended_settings
+}
+
+extended_services_json() {
+  normalize_extended_settings
+  local SERVICES=''
+
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+    SERVICES+="
+        {
+            \"type\":\"manager\",
+            \"tag\":\"my-manager\",
+            \"database\":{
+                \"driver\":\"sqlite\",
+                \"dsn\":\"file:${WORK_DIR}/manager.db?_pragma=foreign_keys(on)&_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)&_time_format=sqlite\"
+            }
+        },
+        {
+            \"type\":\"manager-api\",
+            \"tag\":\"my-manager-api\",
+            \"api_type\":\"server\",
+            \"protocol_type\":\"http\",
+            \"listen\":\"${EXT_MANAGER_LISTEN}\",
+            \"listen_port\":${EXT_MANAGER_API_PORT},
+            \"manager\":\"my-manager\",
+            \"api_key\":\"${EXT_API_KEY}\",
+            \"cors\":{
+                \"allowed_origins\":[\"*\"],
+                \"max_age\":600
+            }
+        },
+        {
+            \"type\":\"node-manager-api\",
+            \"tag\":\"my-node-manager-api\",
+            \"api_type\":\"server\",
+            \"listen\":\"${EXT_MANAGER_LISTEN}\",
+            \"listen_port\":${EXT_NODE_API_PORT},
+            \"manager\":\"my-manager\",
+            \"api_key\":\"${EXT_API_KEY}\",
+            \"keep_alive\":\"10s\",
+            \"keep_alive_timeout\":\"5s\"
+        },
+        {
+            \"type\":\"admin-panel\",
+            \"tag\":\"admin\",
+            \"listen\":\"${EXT_MANAGER_LISTEN}\",
+            \"listen_port\":${EXT_ADMIN_PORT}
+        }"
+  fi
+
+  if [ "$IS_EXT_NODE" = 'is_ext_node' ]; then
+    [ -n "$SERVICES" ] && SERVICES+=","
+    SERVICES+="
+        {
+            \"type\":\"node\",
+            \"tag\":\"my-node\",
+            \"uuid\":\"${EXT_NODE_UUID}\",
+            \"manager\":\"node-manager\",
+            \"inbounds\":[${EXT_NODE_INBOUNDS_JSON:-$(extended_node_inbounds_json)}],
+            \"connection_limiters\":[\"connection-limiter\"],
+            \"bandwidth_limiters\":[\"bandwidth-limiter\"],
+            \"traffic_limiters\":[\"traffic-limiter\"],
+            \"rate_limiters\":[\"rate-limiter\"]
+        },
+        {
+            \"type\":\"node-manager-api\",
+            \"tag\":\"node-manager\",
+            \"api_type\":\"client\",
+            \"server\":\"${EXT_NODE_MANAGER_SERVER}\",
+            \"server_port\":${EXT_NODE_API_PORT},
+            \"api_key\":\"${EXT_API_KEY}\"
+        }"
+  fi
+
+  [ -n "$SERVICES" ] && printf '    "services":[%s\n    ]' "$SERVICES"
+}
+
+extended_node_inbounds_json() {
+  local TAGS=() FILE TAG CHECK_PROTOCOLS
+  for FILE in ${WORK_DIR}/conf/*_inbounds.json; do
+    [ -s "$FILE" ] || continue
+    while IFS= read -r TAG; do
+      [ -n "$TAG" ] && [ "$TAG" != 'shadowtls-in' ] && TAGS+=("$TAG")
+    done < <(jq_exec -r '.inbounds[]?.tag // empty' "$FILE" 2>/dev/null || awk 'match($0, /"tag"[[:space:]]*:[[:space:]]*"[^"]+"/){v=substr($0,RSTART,RLENGTH); sub(/.*"tag"[[:space:]]*:[[:space:]]*"/,"",v); sub(/".*/,"",v); print v}' "$FILE")
+  done
+
+  if [ "${#TAGS[@]}" -eq 0 ] && [ "${#INSTALL_PROTOCOLS[@]}" -gt 0 ]; then
+    for CHECK_PROTOCOLS in "${INSTALL_PROTOCOLS[@]}"; do
+      [ "$CHECK_PROTOCOLS" = 'a' ] && continue
+      TAG="${NODE_NAME_CONFIRM:-sing-box} ${NODE_TAG[$(( $(asc "$CHECK_PROTOCOLS") - 98 ))]}"
+      [ -n "$TAG" ] && TAGS+=("$TAG")
+    done
+  fi
+
+  if [ "${#TAGS[@]}" -eq 0 ]; then
+    printf '"vless-in"'
+    return
+  fi
+
+  local OUT='' T
+  for T in "${TAGS[@]}"; do
+    T=${T//\\/\\\\}
+    T=${T//\"/\\\"}
+    OUT+="\"${T}\","
+  done
+  printf '%s' "${OUT%,}"
+}
+
+write_extended_services_conf() {
+  normalize_extended_settings
+  local SERVICES_FILE="${WORK_DIR}/conf/08_services.json"
+  if [[ "$IS_EXT_MANAGER" != 'is_ext_manager' && "$IS_EXT_NODE" != 'is_ext_node' ]]; then
+    rm -f "$SERVICES_FILE"
+    return
+  fi
+
+  local SERVICES_JSON
+  SERVICES_JSON=$(extended_services_json)
+  cat > "$SERVICES_FILE" << EOF
+{
+$SERVICES_JSON
+}
+EOF
+}
+
+remove_extended_node_limiters() {
+  local OUT_FILE="${WORK_DIR}/conf/01_outbounds.json" ROUTE_FILE="${WORK_DIR}/conf/03_route.json" TMP_FILE
+  if [ -s "$OUT_FILE" ]; then
+    TMP_FILE="${OUT_FILE}.tmp"
+    jq_exec '.outbounds |= map(select(.tag as $t | ["bandwidth-limiter","rate-limiter","connection-limiter","traffic-limiter"] | index($t) | not))' "$OUT_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$OUT_FILE"
+  fi
+  if [ -s "$ROUTE_FILE" ]; then
+    TMP_FILE="${ROUTE_FILE}.tmp"
+    jq_exec 'if .route.final == "traffic-limiter" then .route.final = "direct" else . end' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
+  fi
+}
+
+write_extended_node_outbounds() {
+  [ "$IS_EXT_NODE" = 'is_ext_node' ] || return
+  local OUT_FILE="${WORK_DIR}/conf/01_outbounds.json" TMP_FILE="${OUT_FILE}.tmp"
+  [ -s "$OUT_FILE" ] || return
+  jq_exec '
+    .outbounds |= ((map(select(.tag as $t | ["bandwidth-limiter","rate-limiter","connection-limiter","traffic-limiter"] | index($t) | not))) + [
+      {"type":"bandwidth-limiter","tag":"bandwidth-limiter","strategy":"manager","route":{"final":"direct"}},
+      {"type":"rate-limiter","tag":"rate-limiter","strategy":"manager","route":{"final":"bandwidth-limiter"}},
+      {"type":"connection-limiter","tag":"connection-limiter","strategy":"manager","route":{"final":"rate-limiter"}},
+      {"type":"traffic-limiter","tag":"traffic-limiter","strategy":"manager","route":{"final":"connection-limiter"}}
+    ])
+  ' "$OUT_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$OUT_FILE"
+}
+
+write_extended_node_route() {
+  [ "$IS_EXT_NODE" = 'is_ext_node' ] || return
+  local ROUTE_FILE="${WORK_DIR}/conf/03_route.json" TMP_FILE="${ROUTE_FILE}.tmp"
+  [ -s "$ROUTE_FILE" ] || return
+  jq_exec '.route.final = "traffic-limiter"' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
+}
+
+fetch_extended_settings() {
+  unset IS_EXT_MANAGER IS_EXT_NODE EXT_API_KEY EXT_NODE_UUID EXT_MANAGER_LISTEN EXT_MANAGER_API_PORT EXT_NODE_API_PORT EXT_ADMIN_PORT EXT_NODE_MANAGER_SERVER
+  local SERVICES_FILE="${WORK_DIR}/conf/08_services.json"
+  [ -s "$SERVICES_FILE" ] || return
+  grep -q '"type"[[:space:]]*:[[:space:]]*"manager"' "$SERVICES_FILE" && IS_EXT_MANAGER=is_ext_manager
+  grep -q '"type"[[:space:]]*:[[:space:]]*"node"' "$SERVICES_FILE" && IS_EXT_NODE=is_ext_node
+  EXT_MANAGER_LISTEN=$(awk -F '"' '/"tag"[[:space:]]*:[[:space:]]*"admin"/{f=1} f && /"listen"/{print $4; exit}' "$SERVICES_FILE")
+  EXT_ADMIN_PORT=$(awk -F ':|,' '/"tag"[[:space:]]*:[[:space:]]*"admin"/{f=1} f && /"listen_port"/{gsub(/ /,"",$2); print $2; exit}' "$SERVICES_FILE")
+  EXT_MANAGER_API_PORT=$(awk -F ':|,' '/"tag"[[:space:]]*:[[:space:]]*"my-manager-api"/{f=1} f && /"listen_port"/{gsub(/ /,"",$2); print $2; exit}' "$SERVICES_FILE")
+  EXT_NODE_API_PORT=$(awk -F ':|,' '/"tag"[[:space:]]*:[[:space:]]*"my-node-manager-api"/{f=1} f && /"listen_port"/{gsub(/ /,"",$2); print $2; exit}' "$SERVICES_FILE")
+  EXT_API_KEY=$(awk -F '"' '/"api_key"/{print $4; exit}' "$SERVICES_FILE")
+  EXT_NODE_UUID=$(awk -F '"' '/"uuid"/{print $4; exit}' "$SERVICES_FILE")
+  EXT_NODE_MANAGER_SERVER=$(awk -F '"' '/"tag"[[:space:]]*:[[:space:]]*"node-manager"/{f=1} f && /"server"/{print $4; exit}' "$SERVICES_FILE")
+}
+
+extended_settings_menu() {
+  fetch_extended_settings
+  local CHOOSE_EXT
+
+  hint "\n $(text 179): $([ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && text 28 || text 27)"
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+    reading " $(text 182) " CHOOSE_EXT
+    [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]] && unset IS_EXT_MANAGER
+  else
+    reading " $(text 181) " CHOOSE_EXT
+    if [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]]; then
+      IS_EXT_MANAGER=is_ext_manager
+      EXT_MANAGER_LISTEN_DEFAULT=${EXT_MANAGER_LISTEN:-$EXT_MANAGER_LISTEN_DEFAULT}
+      reading " $(text 183) " EXT_MANAGER_LISTEN
+      EXT_MANAGER_LISTEN=${EXT_MANAGER_LISTEN:-$EXT_MANAGER_LISTEN_DEFAULT}
+      reading " $(text 184) " EXT_MANAGER_API_PORT
+      EXT_MANAGER_API_PORT=${EXT_MANAGER_API_PORT:-$EXT_MANAGER_API_PORT_DEFAULT}
+      reading " $(text 185) " EXT_NODE_API_PORT
+      EXT_NODE_API_PORT=${EXT_NODE_API_PORT:-$EXT_NODE_API_PORT_DEFAULT}
+      reading " $(text 186) " EXT_ADMIN_PORT
+      EXT_ADMIN_PORT=${EXT_ADMIN_PORT:-$EXT_ADMIN_PORT_DEFAULT}
+      reading " $(text 187) " EXT_API_KEY
+    fi
+  fi
+
+  unset CHOOSE_EXT
+  hint "\n $(text 180): $([ "$IS_EXT_NODE" = 'is_ext_node' ] && text 28 || text 27)"
+  if [ "$IS_EXT_NODE" = 'is_ext_node' ]; then
+    reading " $(text 182) " CHOOSE_EXT
+    [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]] && unset IS_EXT_NODE
+  else
+    reading " $(text 181) " CHOOSE_EXT
+    if [[ "${CHOOSE_EXT,,}" =~ ^(y|yes)$ ]]; then
+      IS_EXT_NODE=is_ext_node
+      EXT_NODE_MANAGER_SERVER_DEFAULT=${EXT_NODE_MANAGER_SERVER:-$EXT_NODE_MANAGER_SERVER_DEFAULT}
+      reading " $(text 188) " EXT_NODE_MANAGER_SERVER
+      EXT_NODE_MANAGER_SERVER=${EXT_NODE_MANAGER_SERVER:-$EXT_NODE_MANAGER_SERVER_DEFAULT}
+      reading " $(text 185) " EXT_NODE_API_PORT
+      EXT_NODE_API_PORT=${EXT_NODE_API_PORT:-$EXT_NODE_API_PORT_DEFAULT}
+      reading " $(text 187) " EXT_API_KEY
+      reading " $(text 189) " EXT_NODE_UUID
+    fi
+  fi
+
+  normalize_extended_settings
+  if [ "$IS_EXT_NODE" = 'is_ext_node' ]; then
+    write_extended_node_outbounds
+    write_extended_node_route
+  else
+    remove_extended_node_limiters
+  fi
+  write_extended_services_conf
+
+  if ! ${WORK_DIR}/sing-box check -C ${WORK_DIR}/conf >/dev/null; then
+    error "\n $(text 174) \n"
+  fi
+  cmd_systemctl reload sing-box
+  sync_firewall_rules
+  export_list
 }
 
 # 更新 Hysteria2 服务端 Realm 模块
@@ -1972,7 +2354,7 @@ check_install() {
       local SB_DIR="$TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH"
       local SB_BIN="$SB_DIR/sing-box"
       wget --no-check-certificate --continue \
-        ${GH_PROXY}https://github.com/SagerNet/sing-box/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz \
+        ${GH_PROXY}https://github.com/shtorm-7/sing-box-extended/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz \
         -qO- | tar xz -C $TEMP_DIR 2>/dev/null
       [ -s "$SB_BIN" ] && [ -x "$SB_BIN" ] && mv "$SB_BIN" "$TEMP_DIR/sing-box" && chmod +x "$TEMP_DIR/sing-box"
     } &
@@ -2205,15 +2587,14 @@ check_system_info() {
 # 获取 sing-box 最新版本
 get_sing_box_version() {
   # FORCE_VERSION 用于在 sing-box 某个主程序出现 bug 时，强制为指定版本，以防止运行出错
-  local FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g; s/\r//g')
+  local FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/Senkoi/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g; s/\r//g')
   if grep -q '.' <<< "$FORCE_VERSION"; then
     local RESULT_VERSION="$FORCE_VERSION"
   else
     # 先判断 github api 返回 http 状态码是否为 200，有时候 IP 会被限制，导致获取不到最新版本
-    local API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name')
+    local API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/shtorm-7/sing-box-extended/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name')
     if grep -q 'HTTP.* 200' <<< "$API_RESPONSE"; then
-      local VERSION_LATEST=$(awk -F '["v-]' '/tag_name/{print $5}' <<< "$API_RESPONSE" | sort -Vr | sed -n '1p')
-      local RESULT_VERSION=$(awk -F '["v]' -v var="tag_name.*$VERSION_LATEST" '$0 ~ var {print $5; exit}' <<< "$API_RESPONSE")
+      local RESULT_VERSION=$(awk -F '"' '/tag_name/{print $4}' <<< "$API_RESPONSE" | sed 's/^[vV]//' | sort -Vr | sed -n '1p')
     else
       local RESULT_VERSION="$DEFAULT_NEWEST_VERSION"
     fi
@@ -2596,6 +2977,9 @@ sing-box_variables() {
     input_cdn
   fi
 
+  # sing-box-extended 管理端 / 节点端设置
+  input_extended_settings
+
   # 确认 UUID
   input_uuid
 
@@ -2922,6 +3306,13 @@ collect_exposed_ports() {
     append_unique_port EXPOSED_TCP_PORTS "$NGINX_PORT"
   fi
 
+  fetch_extended_settings
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && is_public_listen "$EXT_MANAGER_LISTEN"; then
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_MANAGER_API_PORT"
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_NODE_API_PORT"
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_ADMIN_PORT"
+  fi
+
   for FILE in ${WORK_DIR}/conf/*_inbounds.json; do
     [ ! -s "$FILE" ] && continue
     BASENAME=$(basename "$FILE")
@@ -3132,6 +3523,13 @@ sync_firewall_rules() {
       }
     ' "${WORK_DIR}/nginx.conf")
     append_unique_port EXPOSED_TCP_PORTS "$NGINX_PORT"
+  fi
+
+  fetch_extended_settings
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && is_public_listen "$EXT_MANAGER_LISTEN"; then
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_MANAGER_API_PORT"
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_NODE_API_PORT"
+    append_unique_port EXPOSED_TCP_PORTS "$EXT_ADMIN_PORT"
   fi
 
   for FILE in ${WORK_DIR}/conf/*_inbounds.json; do
@@ -3610,6 +4008,11 @@ EOF
     ]
 }
 EOF
+
+  # 如已启用 sing-box-extended 节点端，基础配置重建时同步恢复 limiter 出站和默认路由。
+  [ -z "$IS_EXT_NODE" ] && fetch_extended_settings
+  write_extended_node_outbounds
+  write_extended_node_route
 }
 
 # 生成 sing-box 配置文件
@@ -3621,6 +4024,7 @@ sing-box_json() {
   if [ "$IS_CHANGE" = 'change' ]; then
     # 判断 sing-box 主程序所在路径
     DIR=${WORK_DIR}
+    fetch_extended_settings
   else
     DIR=$TEMP_DIR
     generate_sing_box_base_conf
@@ -4214,6 +4618,11 @@ EOF
 }
 EOF
   fi
+
+  # sing-box-extended 管理端 / 节点端配置
+  write_extended_services_conf
+  write_extended_node_outbounds
+  write_extended_node_route
 }
 
 # Sing-box 生成守护进程文件
@@ -5248,6 +5657,31 @@ $(hint "$(text 82) 2:")
 $(${WORK_DIR}/qrencode $SUBSCRIBE_ADDRESS/${UUID_CONFIRM}/auto2)
 "
 
+  fetch_extended_settings
+  if [[ "$IS_EXT_MANAGER" = 'is_ext_manager' || "$IS_EXT_NODE" = 'is_ext_node' ]]; then
+    EXPORT_LIST_FILE+="
+
+*******************************************
+┌────────────────┐
+│                │
+│ $(warning "Extended") │
+│                │
+└────────────────┘"
+    if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+      EXPORT_LIST_FILE+="
+$(text 190): http://${EXT_MANAGER_LISTEN}:${EXT_ADMIN_PORT}
+$(text 191): http://${EXT_MANAGER_LISTEN}:${EXT_MANAGER_API_PORT}
+$(text 192): ${EXT_MANAGER_LISTEN}:${EXT_NODE_API_PORT}"
+    fi
+    [ -n "$EXT_API_KEY" ] && EXPORT_LIST_FILE+="
+$(text 193): ${EXT_API_KEY}"
+    if [ "$IS_EXT_NODE" = 'is_ext_node' ]; then
+      EXPORT_LIST_FILE+="
+$(text 180): ${EXT_NODE_MANAGER_SERVER}:${EXT_NODE_API_PORT}
+$(text 194): ${EXT_NODE_UUID}"
+    fi
+  fi
+
   # 生成并显示节点信息
   echo "$EXPORT_LIST_FILE" > ${WORK_DIR}/list
   cat ${WORK_DIR}/list
@@ -5673,7 +6107,7 @@ version() {
 
   if [ "${UPDATE,,}" = 'y' ]; then
     check_system_info
-    wget --no-check-certificate --continue ${GH_PROXY}https://github.com/SagerNet/sing-box/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -qO- | tar xz -C $TEMP_DIR sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box
+    wget --no-check-certificate --continue ${GH_PROXY}https://github.com/shtorm-7/sing-box-extended/releases/download/v$ONLINE/sing-box-$ONLINE-linux-$SING_BOX_ARCH.tar.gz -qO- | tar xz -C $TEMP_DIR sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box
 
     [ -s $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box ] || error "\n $(text 42) \n"
     if ! $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box check -C ${WORK_DIR}/conf >/dev/null; then
@@ -5874,6 +6308,10 @@ if [[ -n "$CONFIG_FILE" && -s "$CONFIG_FILE" ]]; then
   L=${LANGUAGE^^}
   [ "$ARGO" = 'true' ] && IS_ARGO=is_argo || IS_ARGO=no_argo
   [ "$SUBSCRIBE" = 'true' ] && IS_SUB=is_sub || IS_SUB=no_sub
+  bool_enabled "$HY2_REALM" && IS_HY2_REALM=is_hy2_realm
+  bool_enabled "$HY2_WARP" && IS_HY2_WARP=is_hy2_warp && IS_HY2_REALM=is_hy2_realm
+  bool_enabled "$EXT_MANAGER" && IS_EXT_MANAGER=is_ext_manager
+  bool_enabled "$EXT_NODE" && IS_EXT_NODE=is_ext_node
 fi
 
 check_root
@@ -6005,6 +6443,33 @@ for z in ${!ALL_PARAMETER[@]}; do
     --BIND_INTERFACE )
       ((z++)); BIND_INTERFACE=${ALL_PARAMETER[z]}
       [[ "${BIND_INTERFACE,,}" = "default" ]] && unset BIND_INTERFACE
+      ;;
+    --EXT_MANAGER|--MANAGER|--ADMIN_PANEL )
+      ((z++)); bool_enabled "${ALL_PARAMETER[z]}" && IS_EXT_MANAGER=is_ext_manager && EXT_MANAGER=true
+      ;;
+    --EXT_NODE )
+      ((z++)); bool_enabled "${ALL_PARAMETER[z]}" && IS_EXT_NODE=is_ext_node && EXT_NODE=true
+      ;;
+    --EXT_MANAGER_LISTEN|--MANAGER_LISTEN )
+      ((z++)); EXT_MANAGER_LISTEN=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_MANAGER_API_PORT|--MANAGER_API_PORT )
+      ((z++)); EXT_MANAGER_API_PORT=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_NODE_API_PORT|--NODE_MANAGER_API_PORT )
+      ((z++)); EXT_NODE_API_PORT=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_ADMIN_PORT|--ADMIN_PANEL_PORT )
+      ((z++)); EXT_ADMIN_PORT=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_API_KEY|--MANAGER_API_KEY )
+      ((z++)); EXT_API_KEY=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_NODE_MANAGER_SERVER|--MANAGER_SERVER )
+      ((z++)); EXT_NODE_MANAGER_SERVER=${ALL_PARAMETER[z]}
+      ;;
+    --EXT_NODE_UUID|--NODE_UUID )
+      ((z++)); EXT_NODE_UUID=${ALL_PARAMETER[z]}
       ;;
     --REALITY_PRIVATE )
       ((z++)); REALITY_PRIVATE=${ALL_PARAMETER[z]}

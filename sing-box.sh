@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # 当前脚本版本号
-VERSION='v1.3.18 (2026.07.24)'
+VERSION='v1.3.19 (2026.07.24)'
 
 # Github 反代加速代理
 GITHUB_PROXY=('https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/')
@@ -46,8 +46,8 @@ mkdir -p "$TEMP_DIR"
 
 E[0]="Language:\n 1. English (default) \n 2. 简体中文"
 C[0]="${E[0]}"
-E[1]="1. Use sing-box-extended core; 2. Add sing-box-extended manager/admin panel and node mode settings; 3. Support install prompts, KV parameters and sb -d post-install management"
-C[1]="1. 使用 sing-box-extended 内核; 2. 增加 sing-box-extended 管理端/Admin Panel 与节点端设置; 3. 支持安装交互、KV 参数和 sb -d 安装后管理"
+E[1]="1. Use sing-box-extended core; 2. Add manager/admin panel and node mode settings; 3. Add Extended user subscription export"
+C[1]="1. 使用 sing-box-extended 内核; 2. 增加管理端/Admin Panel 与节点端设置; 3. 增加 Extended 用户订阅导出"
 E[2]="Downloading Sing-box. Please wait a seconds ..."
 C[2]="下载 Sing-box 中，请稍等 ..."
 E[3]="Input errors up to 5 times.The script is aborted."
@@ -432,6 +432,16 @@ E[193]="Extended API key"
 C[193]="Extended API Key"
 E[194]="Extended node UUID"
 C[194]="Extended 节点 UUID"
+E[195]="Extended user subscription (sb --EXT_SUB [username])"
+C[195]="Extended 用户订阅 (sb --EXT_SUB [用户名])"
+E[196]="Enter Extended username (leave blank for all users):"
+C[196]="请输入 Extended 用户名 (留空生成全部用户):"
+E[197]="No Extended users found."
+C[197]="没有找到 Extended 用户。"
+E[198]="Extended user subscription generated"
+C[198]="Extended 用户订阅已生成"
+E[199]="Unsupported Extended user/protocol skipped"
+C[199]="已跳过不支持的 Extended 用户/协议"
 
 # 自定义字体彩色，read 函数
 warning() { echo -e "\033[31m\033[01m$*\033[0m"; }  # 红色
@@ -737,6 +747,7 @@ change_config() {
   EXT_MANAGER_STATUS=$([ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && text 28 || text 27)
   EXT_NODE_STATUS=$([ "$IS_EXT_NODE" = 'is_ext_node' ] && text 28 || text 27)
   MENU_IDX+=(178) && MENU_KEY+=(extended) && MENU_VAL+=("${EXT_MANAGER_STATUS}/${EXT_NODE_STATUS}")
+  [ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && MENU_IDX+=(195) && MENU_KEY+=(extsub) && MENU_VAL+=("")
 
   # Hysteria2 带宽和端口跳跃（仅在 Hysteria2 已安装时显示）
   if ls ${WORK_DIR}/conf/*_${NODE_TAG[1]}_inbounds.json >/dev/null 2>&1; then
@@ -911,6 +922,9 @@ change_config() {
     return
   elif [ "$KEY" = "extended" ]; then
     extended_settings_menu
+    return
+  elif [ "$KEY" = "extsub" ]; then
+    extended_user_subscription
     return
   elif [ "$KEY" = "fingerprint" ]; then
     # 修改客户端指纹
@@ -4891,6 +4905,195 @@ fetch_nodes_value() {
   [ -s ${WORK_DIR}/conf/*_${NODE_TAG[11]}_inbounds.json ] && local JSON=$(cat ${WORK_DIR}/conf/*_${NODE_TAG[11]}_inbounds.json) && NODE_NAME[22]=$(sed -n "s/.*\"tag\":\"\(.*\) ${NODE_TAG[11]}.*/\1/p" <<< "$JSON") && PORT_NAIVE=$(sed -n 's/.*"listen_port":\([0-9]\+\),/\1/gp' <<< "$JSON") && UUID[22]=$(awk -F '"' '/"username"/{print $4; exit}' <<< "$JSON")
 }
 
+url_encode() {
+  jq_exec -nr --arg v "$1" '$v|@uri'
+}
+
+extended_inbound_file() {
+  local TAG="$1" FILE
+  for FILE in ${WORK_DIR}/conf/*_inbounds.json; do
+    [ -s "$FILE" ] || continue
+    sed '/^[[:space:]]*\/\//d' "$FILE" | jq_exec -e --arg tag "$TAG" '.inbounds[]? | select(.tag == $tag)' >/dev/null 2>&1 && { echo "$FILE"; return 0; }
+  done
+  return 1
+}
+
+extended_inbound_json() {
+  local TAG="$1" FILE
+  FILE=$(extended_inbound_file "$TAG") || return 1
+  sed '/^[[:space:]]*\/\//d' "$FILE" | jq_exec -c --arg tag "$TAG" '.inbounds[]? | select(.tag == $tag)' 2>/dev/null | head -n1
+}
+
+extended_user_subscription() {
+  check_install
+  [ "${STATUS[0]}" = "$(text 26)" ] && error "\n Sing-box $(text 26) "
+  fetch_nodes_value
+  fetch_extended_settings
+  normalize_extended_settings
+
+  if [ "$IS_EXT_MANAGER" != 'is_ext_manager' ]; then
+    error "\n $(text 179) $(text 27) \n"
+  fi
+  [ -z "$EXT_API_KEY" ] && error "\n $(text 193) $(text 38) \n"
+
+  local TARGET_USERNAME="$1"
+  if [ -z "$TARGET_USERNAME" ] && [ "$2" != 'noninteractive' ]; then
+    reading "\n $(text 196) " TARGET_USERNAME
+  fi
+
+  local API_HOST="$EXT_MANAGER_LISTEN"
+  case "$API_HOST" in
+    ""|0.0.0.0|::|\[::\] ) API_HOST="127.0.0.1" ;;
+  esac
+  [[ "$API_HOST" =~ : && ! "$API_HOST" =~ ^\[.*\]$ ]] && API_HOST="[$API_HOST]"
+  local BASE_URL="http://${API_HOST}:${EXT_MANAGER_API_PORT}/manager/v1"
+  local USERS_JSON="${TEMP_DIR}/extended-users.json"
+  wget --no-check-certificate -qO "$USERS_JSON" --header="Authorization: Bearer ${EXT_API_KEY}" "$BASE_URL/users" 2>/dev/null || error "\n $(text 191) $(text 38) \n"
+
+  local USERS_NDJSON="${TEMP_DIR}/extended-users.ndjson"
+  jq_exec -c --arg username "$TARGET_USERNAME" '
+    (if type == "array" then .[] else .items[]? end)
+    | select($username == "" or .username == $username)
+  ' "$USERS_JSON" > "$USERS_NDJSON"
+  [ -s "$USERS_NDJSON" ] || error "\n $(text 197) \n"
+
+  local SERVER_HOST="${SERVER_IP}"
+  if [[ "$SERVER_HOST" =~ : ]]; then
+    SERVER_HOST="[$SERVER_HOST]"
+  fi
+
+  local TLS_SERVER_CERT=""
+  [ -s "${WORK_DIR}/cert/cert.pem" ] && TLS_SERVER_CERT=$(openssl x509 -noout -ext subjectAltName -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F 'DNS:' '/DNS:/{gsub(/,.*/, "", $2); print $2; exit}')
+  [ -z "$TLS_SERVER_CERT" ] && [ -s "${WORK_DIR}/cert/cert.pem" ] && TLS_SERVER_CERT=$(openssl x509 -noout -subject -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | sed -n 's/.*CN *= *\([^,\/]*\).*/\1/p')
+  local CERT_SHA256="" CERT_BASE64=""
+  [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_SHA256=$(openssl x509 -fingerprint -noout -sha256 -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F '=' '{print $NF}')
+  [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_BASE64=$(openssl x509 -in ${WORK_DIR}/cert/cert.pem -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | openssl enc -base64 2>/dev/null)
+
+  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG RAW_FILE SUB_FILE LINKS_FILE SKIPPED_FILE
+  mkdir -p "$OUT_DIR"
+  if [ -n "$TARGET_USERNAME" ]; then
+    SLUG=$(sed 's#[/[:space:]]#_#g; s#[^[:alnum:]_.@-]#_#g' <<< "$TARGET_USERNAME")
+    [ -z "$SLUG" ] && SLUG="user"
+  else
+    SLUG="all"
+  fi
+  RAW_FILE="${OUT_DIR}/${SLUG}.txt"
+  SUB_FILE="${OUT_DIR}/${SLUG}"
+  LINKS_FILE="${TEMP_DIR}/extended-user-links.txt"
+  SKIPPED_FILE="${TEMP_DIR}/extended-user-skipped.txt"
+  : > "$LINKS_FILE"
+  rm -f "$SKIPPED_FILE"
+
+  local USER_JSON USERNAME INBOUND USER_TYPE USER_UUID USER_PASSWORD USER_SECRET USER_FLOW ALTER_ID
+  local INBOUND_JSON INBOUND_FILE IN_TYPE PORT TRANSPORT SECURITY SNI PUBLIC_KEY SHORT_ID SERVICE_NAME PATH_VALUE HOST_VALUE REMARK REMARK_ENC LINK
+  while IFS= read -r USER_JSON; do
+    USERNAME=$(jq_exec -r '.username // empty' <<< "$USER_JSON")
+    INBOUND=$(jq_exec -r '.inbound // empty' <<< "$USER_JSON")
+    USER_TYPE=$(jq_exec -r '.type // empty' <<< "$USER_JSON")
+    USER_UUID=$(jq_exec -r '.uuid // empty' <<< "$USER_JSON")
+    USER_PASSWORD=$(jq_exec -r '.password // empty' <<< "$USER_JSON")
+    USER_SECRET=$(jq_exec -r '.secret // empty' <<< "$USER_JSON")
+    USER_FLOW=$(jq_exec -r '.flow // empty' <<< "$USER_JSON")
+    ALTER_ID=$(jq_exec -r '.alter_id // 0' <<< "$USER_JSON")
+    INBOUND_JSON=$(extended_inbound_json "$INBOUND") || { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: inbound not found" >> "$SKIPPED_FILE"; continue; }
+    INBOUND_FILE=$(extended_inbound_file "$INBOUND")
+    [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
+
+    IN_TYPE=$(jq_exec -r '.type // empty' <<< "$INBOUND_JSON")
+    PORT=$(jq_exec -r '.listen_port // empty' <<< "$INBOUND_JSON")
+    TRANSPORT=$(jq_exec -r '.transport.type // "tcp"' <<< "$INBOUND_JSON")
+    SECURITY=$(jq_exec -r 'if .tls.reality.enabled == true then "reality" elif .tls.enabled == true then "tls" else "none" end' <<< "$INBOUND_JSON")
+    SNI=$(jq_exec -r '.tls.server_name // empty' <<< "$INBOUND_JSON")
+    SNI=${SNI:-$TLS_SERVER_CERT}
+    PUBLIC_KEY=$(awk -F '"' '/public_key/{print $4; exit}' "$INBOUND_FILE" 2>/dev/null)
+    SHORT_ID=$(jq_exec -r '.tls.reality.short_id[0] // ""' <<< "$INBOUND_JSON")
+    SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
+    PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
+    HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+    REMARK="${USERNAME} ${INBOUND}"
+    REMARK_ENC=$(url_encode "$REMARK")
+    LINK=""
+
+    case "$USER_TYPE" in
+      vless )
+        [ -z "$USER_UUID" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid" >> "$SKIPPED_FILE"; continue; }
+        local VLESS_Q="encryption=none"
+        if [ "$SECURITY" = 'reality' ]; then
+          VLESS_Q+="&security=reality&sni=$(url_encode "$SNI")&fp=${FINGER_PRINT:-chrome}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}"
+        elif [ "$SECURITY" = 'tls' ]; then
+          VLESS_Q+="&security=tls&sni=$(url_encode "$SNI")"
+        else
+          VLESS_Q+="&security=none"
+        fi
+        case "$TRANSPORT" in
+          ws ) VLESS_Q+="&type=ws&host=$(url_encode "$HOST_VALUE")&path=$(url_encode "$PATH_VALUE")" ;;
+          grpc ) VLESS_Q+="&type=grpc&serviceName=$(url_encode "$SERVICE_NAME")&mode=gun" ;;
+          http ) VLESS_Q+="&type=http&path=$(url_encode "$PATH_VALUE")" ;;
+          * ) VLESS_Q+="&type=tcp" ;;
+        esac
+        [ -n "$USER_FLOW" ] && VLESS_Q+="&flow=${USER_FLOW}"
+        LINK="vless://${USER_UUID}@${SERVER_HOST}:${PORT}?${VLESS_Q}#${REMARK_ENC}"
+        ;;
+      vmess )
+        [ -z "$USER_UUID" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid" >> "$SKIPPED_FILE"; continue; }
+        local VMESS_NET="$TRANSPORT" VMESS_TLS=""
+        [ "$SECURITY" = 'tls' ] && VMESS_TLS="tls"
+        [ "$SECURITY" = 'reality' ] && VMESS_TLS="tls"
+        [ "$VMESS_NET" = 'tcp' ] && VMESS_NET="tcp"
+        LINK="vmess://$(jq_exec -cn --arg ps "$REMARK" --arg add "${SERVER_IP}" --arg port "$PORT" --arg id "$USER_UUID" --arg aid "${ALTER_ID:-0}" --arg net "$VMESS_NET" --arg host "$HOST_VALUE" --arg path "$PATH_VALUE" --arg tls "$VMESS_TLS" --arg sni "$SNI" '{v:"2",ps:$ps,add:$add,port:$port,id:$id,aid:$aid,scy:"auto",net:$net,type:"",host:$host,path:$path,tls:$tls,sni:$sni,alpn:""}' | base64 -w0)"
+        ;;
+      hysteria2|hysteria )
+        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
+        LINK="hysteria2://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?sni=$(url_encode "$SNI")&insecure=0#${REMARK_ENC}"
+        ;;
+      tuic )
+        [ -z "$USER_UUID" ] || [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid/password" >> "$SKIPPED_FILE"; continue; }
+        local CC=$(jq_exec -r '.congestion_control // "bbr"' <<< "$INBOUND_JSON")
+        LINK="tuic://${USER_PASSWORD}:${USER_UUID}@${SERVER_HOST}:${PORT}?congestion_control=${CC}&udp_relay_mode=native&alpn=h3&sni=$(url_encode "$SNI")&allow_insecure=0#${REMARK_ENC}"
+        ;;
+      trojan )
+        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
+        LINK="trojan://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?security=tls&sni=$(url_encode "$SNI")&allowInsecure=0#${REMARK_ENC}"
+        ;;
+      anytls )
+        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
+        LINK="anytls://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?security=tls&sni=$(url_encode "$SNI")&insecure=0#${REMARK_ENC}"
+        ;;
+      http|mixed|naive|socks|trusttunnel|mtproxy|ssh )
+        echo "${USERNAME}/${INBOUND}/${USER_TYPE}: URI export not supported" >> "$SKIPPED_FILE"
+        continue
+        ;;
+      * )
+        echo "${USERNAME}/${INBOUND}/${USER_TYPE}: unknown type" >> "$SKIPPED_FILE"
+        continue
+        ;;
+    esac
+    [ -n "$LINK" ] && echo "$LINK" >> "$LINKS_FILE"
+  done < "$USERS_NDJSON"
+
+  [ -s "$LINKS_FILE" ] || error "\n $(text 197) \n$(cat "$SKIPPED_FILE")\n"
+  cp -f "$LINKS_FILE" "$RAW_FILE"
+  base64 -w0 "$LINKS_FILE" > "$SUB_FILE"
+
+  local SUBSCRIBE_ADDRESS=""
+  if [ -n "$PORT_NGINX" ] && [ -n "$UUID_CONFIRM" ] && [ "$IS_SUB" = 'is_sub' ]; then
+    [[ "$ARGO_TYPE" = 'is_token_argo' || "$ARGO_TYPE" = 'is_json_argo' ]] && SUBSCRIBE_ADDRESS="https://$ARGO_DOMAIN" || SUBSCRIBE_ADDRESS="http://${SERVER_HOST}:${PORT_NGINX}"
+  fi
+
+  info "\n $(text 198):"
+  hint " $RAW_FILE"
+  hint " $SUB_FILE"
+  if [ -n "$SUBSCRIBE_ADDRESS" ]; then
+    info "\n $(text 80):"
+    hint " ${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}"
+    hint " ${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.txt"
+  fi
+  if [ -s "$SKIPPED_FILE" ]; then
+    warning "\n $(text 199):"
+    cat "$SKIPPED_FILE"
+  fi
+}
+
 # 获取 Argo 临时隧道域名
 fetch_quicktunnel_domain() {
   unset CLOUDFLARED_PID METRICS_ADDRESS ARGO_DOMAIN
@@ -6217,6 +6420,7 @@ menu_setting() {
     OPTION[10]="10.  $(text 59)"
     OPTION[11]="11.  $(text 69)"
     OPTION[12]="12.  $(text 76)"
+    OPTION[13]="13.  $(text 195)"
 
     ACTION[1]() { export_list; exit 0; }
 
@@ -6252,6 +6456,7 @@ menu_setting() {
     ACTION[10]() { bash <(wget --no-check-certificate -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/argox/main/argox.sh) -$L; exit; }
     ACTION[11]() { bash <(wget --no-check-certificate -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sba/main/sba.sh) -$L; exit; }
     ACTION[12]() { bash <(wget --no-check-certificate -qO- https://tcp.hy2.sh/); exit; }
+    ACTION[13]() { extended_user_subscription; exit; }
   else
     OPTION[1]="1.  $(text 115)"
     OPTION[2]="2.  $(text 34) + Argo + $(text 80) $(text 89)"
@@ -6414,6 +6619,12 @@ for z in ${!ALL_PARAMETER[@]}; do
       ;;
     -N )
       [ ! -s ${WORK_DIR}/list ] && error " Sing-box $(text 26) "; export_list; exit 0
+      ;;
+    --EXT_SUB|--EXT_SUBSCRIBE|--EXT_USER_SUBSCRIBE )
+      if [ $((z+1)) -lt ${#ALL_PARAMETER[@]} ] && [[ ! "${ALL_PARAMETER[$((z+1))]}" =~ ^- ]]; then
+        ((z++)); EXT_SUB_USERNAME=${ALL_PARAMETER[z]}
+      fi
+      extended_user_subscription "$EXT_SUB_USERNAME" noninteractive; exit 0
       ;;
     -V )
       check_system_info; check_arch; version; exit 0

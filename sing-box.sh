@@ -29,6 +29,7 @@ CDN_DOMAIN=("skk.moe" "ip.sb" "time.is" "cfip.xxxxxxxx.tk" "bestcf.top" "cdn.202
 SUBSCRIBE_TEMPLATE="https://raw.githubusercontent.com/fscarmen/client_template/main"
 DEFAULT_NEWEST_VERSION='1.13.14-extended-2.5.2'
 FINGER_PRINT='chrome'
+SCRIPT_REPO_URL='https://raw.githubusercontent.com/Senkoi/sing-box/main/sing-box.sh'
 STEP_NUM=0      # 当前步骤编号（安装流程中动态递增）
 TOTAL_STEPS=''  # 总步骤数（协议确定后动态计算）
 
@@ -723,7 +724,8 @@ change_config() {
   [ -n "$SERVER_IP_NOW" ] && MENU_IDX+=(132) && MENU_KEY+=(serverip) && MENU_VAL+=("$SERVER_IP_NOW")
 
   # 从 sing-box 格式的 list 中提取 client-fingerprint，取第一个匹配值
-  local FP_NOW=$(awk -F '"' '/"fingerprint"/{print $4; exit}' ${WORK_DIR}/list)
+  local FP_NOW=''
+  [ -s "${WORK_DIR}/list" ] && FP_NOW=$(awk -F '"' '/"fingerprint"/{print $4; exit}' ${WORK_DIR}/list)
   [ -n "$FP_NOW" ] && MENU_IDX+=(164) && MENU_KEY+=(fingerprint) && MENU_VAL+=("$FP_NOW")
 
   # 指定网络出口
@@ -1320,6 +1322,35 @@ jq_exec() {
   fi
 }
 
+sanitize_wireguard_reserved() {
+  local ENDPOINT_FILE="${WORK_DIR}/conf/02_endpoints.json" ROUTE_FILE="${WORK_DIR}/conf/03_route.json" TMP_FILE
+  if [ -s "$ENDPOINT_FILE" ]; then
+    TMP_FILE="${ENDPOINT_FILE}.tmp"
+    jq_exec 'if .endpoints then .endpoints |= map(if .type == "wireguard" and .peers then .peers |= map(del(.reserved)) else . end) else . end' "$ENDPOINT_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ENDPOINT_FILE"
+  fi
+  if [ -s "$ROUTE_FILE" ]; then
+    TMP_FILE="${ROUTE_FILE}.tmp"
+    jq_exec 'if .route then .route |= del(.default_http_client) else . end' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
+  fi
+  rm -f "${WORK_DIR}/conf/07_http_clients.json"
+}
+
+solidify_script() {
+  mkdir -p "$WORK_DIR"
+  local TARGET="${WORK_DIR}/sing-box.sh"
+  local SRC
+  for SRC in "${BASH_SOURCE[0]}" "$0"; do
+    if [ -r "$SRC" ] && grep -q "^VERSION='" "$SRC" 2>/dev/null; then
+      cp -f "$SRC" "$TARGET" && chmod +x "$TARGET" && return
+    fi
+  done
+  if [ -s "$TARGET" ]; then
+    chmod +x "$TARGET"
+    return
+  fi
+  wget --no-check-certificate -qO "$TARGET" "$SCRIPT_REPO_URL" 2>/dev/null && chmod +x "$TARGET"
+}
+
 bool_enabled() {
   [[ "${1,,}" =~ ^(true|1|y|yes|on|enable|enabled)$ ]]
 }
@@ -1365,6 +1396,18 @@ normalize_extended_settings() {
   valid_port "$EXT_MANAGER_API_PORT" || EXT_MANAGER_API_PORT=$EXT_MANAGER_API_PORT_DEFAULT
   valid_port "$EXT_NODE_API_PORT" || EXT_NODE_API_PORT=$EXT_NODE_API_PORT_DEFAULT
   valid_port "$EXT_ADMIN_PORT" || EXT_ADMIN_PORT=$EXT_ADMIN_PORT_DEFAULT
+
+  # 管理 API、节点管理 API、Admin Panel 默认不共用端口；如用户填成相同，自动拆开，避免监听冲突。
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+    [ "$EXT_MANAGER_API_PORT" = "$EXT_NODE_API_PORT" ] && EXT_NODE_API_PORT=$EXT_NODE_API_PORT_DEFAULT
+    [ "$EXT_MANAGER_API_PORT" = "$EXT_NODE_API_PORT" ] && EXT_NODE_API_PORT=$((EXT_MANAGER_API_PORT + 1))
+    [ "$EXT_ADMIN_PORT" = "$EXT_MANAGER_API_PORT" ] && EXT_ADMIN_PORT=$EXT_ADMIN_PORT_DEFAULT
+    [ "$EXT_ADMIN_PORT" = "$EXT_MANAGER_API_PORT" ] && EXT_ADMIN_PORT=$((EXT_MANAGER_API_PORT + 2))
+    [ "$EXT_ADMIN_PORT" = "$EXT_NODE_API_PORT" ] && EXT_ADMIN_PORT=$EXT_ADMIN_PORT_DEFAULT
+    [ "$EXT_ADMIN_PORT" = "$EXT_NODE_API_PORT" ] && EXT_ADMIN_PORT=$((EXT_NODE_API_PORT + 1))
+    valid_port "$EXT_NODE_API_PORT" || EXT_NODE_API_PORT=$EXT_NODE_API_PORT_DEFAULT
+    valid_port "$EXT_ADMIN_PORT" || EXT_ADMIN_PORT=$EXT_ADMIN_PORT_DEFAULT
+  fi
 
   if [[ "$EXT_NODE_UUID" != "" && ! "${EXT_NODE_UUID,,}" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then
     unset EXT_NODE_UUID
@@ -1640,6 +1683,7 @@ extended_settings_menu() {
     remove_extended_node_limiters
   fi
   write_extended_services_conf
+  sanitize_wireguard_reserved
 
   if ! ${WORK_DIR}/sing-box check -C ${WORK_DIR}/conf >/dev/null; then
     error "\n $(text 174) \n"
@@ -3901,11 +3945,6 @@ EOF
                 "allowed_ips": [
                   "0.0.0.0/0",
                   "::/0"
-                ],
-                "reserved":[
-                    78,
-                    135,
-                    76
                 ]
               }
             ]
@@ -3918,13 +3957,13 @@ EOF
   cat > ${WORK_DIR}/conf/03_route.json << EOF
 {
     "route":{
-        "default_http_client": "http-client-direct",
         "rule_set":[
             {
                 "tag":"geosite-openai",
                 "type":"remote",
                 "format":"binary",
-                "url":"https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs"
+                "url":"https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
+                "download_detour":"direct"
             }
         ],
         "rules":[
@@ -3998,18 +4037,11 @@ EOF
 }
 EOF
 
-  # 专门给 sing-box 内部组件发 HTTP 请求用，比如这些场景会用到它：下载远程 rule_set：.srs 规则文件，ACME 申请证书，Cloudflare Origin CA 证书提供器，DERP / Tailscale 相关 HTTP 请求
-  cat > ${WORK_DIR}/conf/07_http_clients.json << EOF
-{
-    "http_clients": [
-        {
-            "tag": "http-client-direct"
-        }
-    ]
-}
-EOF
+  # sing-box-extended v1.13.14 不支持独立 http_clients 配置；清理旧版残留文件。
+  rm -f ${WORK_DIR}/conf/07_http_clients.json
 
   # 如已启用 sing-box-extended 节点端，基础配置重建时同步恢复 limiter 出站和默认路由。
+  sanitize_wireguard_reserved
   [ -z "$IS_EXT_NODE" ] && fetch_extended_settings
   write_extended_node_outbounds
   write_extended_node_route
@@ -4883,6 +4915,7 @@ fetch_quicktunnel_domain() {
 
 # 安装 sing-box 全家桶
 install_sing-box() {
+  solidify_script
   sing-box_variables
   if [ -n "$PORT_NGINX" ] && ! command -v nginx >/dev/null 2>&1; then
     info "\n $(text 7) nginx \n"
@@ -5692,12 +5725,18 @@ $(text 194): ${EXT_NODE_UUID}"
 
 # 创建快捷方式
 create_shortcut() {
+  solidify_script
+
   cat > ${WORK_DIR}/sb.sh << EOF
 #!/usr/bin/env bash
 
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/sing-box/main/sing-box.sh) \$@
+SCRIPT="${WORK_DIR}/sing-box.sh"
+if [ ! -s "\$SCRIPT" ]; then
+  wget --no-check-certificate -qO "\$SCRIPT" "$SCRIPT_REPO_URL"
+fi
+bash "\$SCRIPT" \$@
 EOF
-  chmod +x ${WORK_DIR}/sb.sh
+  chmod +x ${WORK_DIR}/sing-box.sh ${WORK_DIR}/sb.sh
   ln -sf ${WORK_DIR}/sb.sh /usr/bin/sb
   [ -s /usr/bin/sb ] && info "\n $(text 71) "
 }
@@ -6045,6 +6084,7 @@ change_protocols() {
 
   # 生成各协议的 json 文件
   sing-box_json change
+  sanitize_wireguard_reserved
 
   # 如有需要，安装和删除 Argo 服务
   if ls ${WORK_DIR}/conf/*-ws*inbounds.json >/dev/null 2>&1; then

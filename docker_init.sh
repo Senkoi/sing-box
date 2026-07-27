@@ -36,7 +36,7 @@ check_latest_sing-box() {
   else
     local VERSION_LIST=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- https://api.github.com/repos/shtorm-7/sing-box-extended/releases | sed -n '/tag_name/ s/^[ ]*//gp')
 
-    # 获取最终版本号，保留 extended 后缀，例如 1.13.14-extended-2.5.2
+    # 获取最终版本号，保留 extended 后缀，例如 1.13.14-extended-2.5.3
     awk -F '"' '/tag_name/{print $4}' <<< "$VERSION_LIST" | sed 's/^[vV]//' | sort -Vr | sed -n '1p' 
   fi
 }

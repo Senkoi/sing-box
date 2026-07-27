@@ -37,7 +37,7 @@ NODE_TAG=("xtls-reality" "hysteria2" "tuic" "ShadowTLS" "shadowsocks" "trojan" "
 CONSECUTIVE_PORTS=${#PROTOCOL_LIST[@]}
 CDN_DOMAIN=("skk.moe" "ip.sb" "time.is" "cfip.xxxxxxxx.tk" "bestcf.top" "cdn.2020111.xyz" "xn--b6gac.eu.org" "cf.090227.xyz")
 SUBSCRIBE_TEMPLATE="https://raw.githubusercontent.com/fscarmen/client_template/main"
-DEFAULT_NEWEST_VERSION='1.13.14-extended-2.5.2'
+DEFAULT_NEWEST_VERSION='1.13.14-extended-2.5.3'
 FINGER_PRINT='chrome'
 SCRIPT_REPO_URL='https://raw.githubusercontent.com/Senkoi/sing-box/main/sing-box.sh'
 STEP_NUM=0      # 当前步骤编号（安装流程中动态递增）
@@ -4932,7 +4932,9 @@ render_sing_box_subscription() {
   [ ! -s "$TEMP_DIR/sing-box-template" ] && wget --no-check-certificate --continue -qO "$TEMP_DIR/sing-box-template" "${GH_PROXY}${SUBSCRIBE_TEMPLATE}/sing-box" 2>/dev/null
   [ -s "$TEMP_DIR/sing-box-template" ] || return 1
 
-  sed "s#\"<OUTBOUND_REPLACE>\",#$OUTBOUND_REPLACE#; s#\"<NODE_REPLACE>\"#${NODE_REPLACE%,}#g" "$TEMP_DIR/sing-box-template" | jq_exec > "$OUT_FILE"
+  sed "s#\"<OUTBOUND_REPLACE>\",#$OUTBOUND_REPLACE#; s#\"<NODE_REPLACE>\"#${NODE_REPLACE%,}#g" "$TEMP_DIR/sing-box-template" | jq_exec '
+    .dns.servers = ((.dns.servers // []) + [{"tag":"block","address":"rcode://refused"}])
+  ' > "$OUT_FILE"
 }
 
 extended_user_sing_box_outbound() {
@@ -5016,6 +5018,54 @@ extended_user_sing_box_outbound() {
   esac
 }
 
+extended_user_uri_link() {
+  local USER_JSON="$1" INBOUND_JSON="$2" INBOUND_FILE="$3" REMARK="$4" TLS_SERVER_FALLBACK="$5"
+  local USER_TYPE USER_UUID USER_FLOW PORT TRANSPORT SECURITY SNI PUBLIC_KEY SHORT_ID SERVICE_NAME PATH_VALUE HOST_VALUE QUERY REMARK_ENC
+
+  USER_TYPE=$(jq_exec -r '.type // empty' <<< "$USER_JSON")
+  [ "$USER_TYPE" = 'vless' ] || return 2
+  USER_UUID=$(jq_exec -r '.uuid // empty' <<< "$USER_JSON")
+  [ -z "$USER_UUID" ] && return 1
+
+  USER_FLOW=$(jq_exec -r '.flow // empty' <<< "$USER_JSON")
+  PORT=$(jq_exec -r '.listen_port // empty' <<< "$INBOUND_JSON")
+  TRANSPORT=$(jq_exec -r '.transport.type // "tcp"' <<< "$INBOUND_JSON")
+  SECURITY=$(jq_exec -r 'if .tls.reality.enabled == true then "reality" elif .tls.enabled == true then "tls" else "none" end' <<< "$INBOUND_JSON")
+  SNI=$(jq_exec -r '.tls.server_name // empty' <<< "$INBOUND_JSON")
+  SNI=${SNI:-$TLS_SERVER_FALLBACK}
+  PUBLIC_KEY=$(awk -F '"' '/public_key/{print $4; exit}' "$INBOUND_FILE" 2>/dev/null)
+  SHORT_ID=$(jq_exec -r '.tls.reality.short_id[0] // ""' <<< "$INBOUND_JSON")
+  SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
+  PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
+  HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
+
+  QUERY="encryption=none&security=${SECURITY}"
+  [ -n "$SNI" ] && QUERY+="&sni=$(url_encode "$SNI")"
+  [ "$SECURITY" = 'reality' ] && [ -n "$PUBLIC_KEY" ] && QUERY+="&fp=${FINGER_PRINT:-chrome}&pbk=$(url_encode "$PUBLIC_KEY")"
+  [ "$SECURITY" = 'reality' ] && [ -n "$SHORT_ID" ] && QUERY+="&sid=$(url_encode "$SHORT_ID")"
+  case "$TRANSPORT" in
+    ws )
+      QUERY+="&type=ws"
+      [ -n "$HOST_VALUE" ] && QUERY+="&host=$(url_encode "$HOST_VALUE")"
+      QUERY+="&path=$(url_encode "$PATH_VALUE")"
+      ;;
+    grpc )
+      QUERY+="&type=grpc"
+      [ -n "$SERVICE_NAME" ] && QUERY+="&serviceName=$(url_encode "$SERVICE_NAME")"
+      ;;
+    http )
+      QUERY+="&type=http"
+      ;;
+    * )
+      QUERY+="&type=tcp"
+      ;;
+  esac
+  [ -n "$USER_FLOW" ] && QUERY+="&flow=$(url_encode "$USER_FLOW")"
+  REMARK_ENC=$(url_encode "$REMARK")
+  printf 'vless://%s@%s:%s?%s#%s\n' "$USER_UUID" "$SERVER_HOST" "$PORT" "$QUERY" "$REMARK_ENC"
+}
+
 extended_user_subscription() {
   check_install
   [ "${STATUS[0]}" = "$(text 26)" ] && error "\n Sing-box $(text 26) "
@@ -5070,7 +5120,7 @@ extended_user_subscription() {
   local CERT_BASE64=""
   [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_BASE64=$(openssl x509 -in ${WORK_DIR}/cert/cert.pem -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | openssl enc -base64 2>/dev/null)
 
-  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
+  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE URI_FILE URI_SUB_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
   mkdir -p "$OUT_DIR"
   if [ -n "$TARGET_USERNAME" ]; then
     SLUG=$(sed 's#[/[:space:]]#_#g; s#[^[:alnum:]_.@-]#_#g' <<< "$TARGET_USERNAME")
@@ -5080,10 +5130,12 @@ extended_user_subscription() {
   fi
   JSON_FILE="${OUT_DIR}/${SLUG}"
   JSON_COPY_FILE="${OUT_DIR}/${SLUG}.json"
+  URI_FILE="${OUT_DIR}/${SLUG}.txt"
+  URI_SUB_FILE="${OUT_DIR}/${SLUG}.uri"
   SKIPPED_FILE="${TEMP_DIR}/extended-user-skipped.txt"
   OUTBOUND_REPLACE=""
   NODE_REPLACE=""
-  rm -f "$SKIPPED_FILE"
+  rm -f "$SKIPPED_FILE" "$URI_FILE" "$URI_SUB_FILE"
 
   local USER_JSON USERNAME INBOUND USER_TYPE INBOUND_JSON INBOUND_FILE REMARK OUTBOUND_JSON
   while IFS= read -r USER_JSON; do
@@ -5100,11 +5152,13 @@ extended_user_subscription() {
     }
     OUTBOUND_REPLACE+=" ${OUTBOUND_JSON},"
     NODE_REPLACE+="\"${REMARK}\","
+    extended_user_uri_link "$USER_JSON" "$INBOUND_JSON" "$INBOUND_FILE" "$REMARK" "$TLS_SERVER_CERT" >> "$URI_FILE" || true
   done < "$USERS_NDJSON"
 
   [ -n "$OUTBOUND_REPLACE" ] || error "\n $(text 197) \n$(cat "$SKIPPED_FILE" 2>/dev/null)\n"
   render_sing_box_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "$JSON_FILE" || error "\n Sing-box $(text 80) $(text 38) \n"
   cp -f "$JSON_FILE" "$JSON_COPY_FILE"
+  [ -s "$URI_FILE" ] && base64 -w0 "$URI_FILE" > "$URI_SUB_FILE"
 
   local SUBSCRIBE_ADDRESS=""
   if [ -n "$PORT_NGINX" ] && [ -n "$UUID_CONFIRM" ] && [ "$IS_SUB" = 'is_sub' ]; then
@@ -5114,12 +5168,23 @@ extended_user_subscription() {
   info "\n $(text 198):"
   hint " $JSON_FILE"
   hint " $JSON_COPY_FILE"
+  if [ -s "$URI_FILE" ]; then
+    hint " $URI_FILE"
+    hint " $URI_SUB_FILE"
+  fi
   if [ -n "$SUBSCRIBE_ADDRESS" ]; then
     local EXT_SUB_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}"
     local EXT_SUB_JSON_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.json"
+    local EXT_SUB_TXT_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.txt"
+    local EXT_SUB_URI_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.uri"
     info "\n SFI / SFA / SFM $(text 80):"
     hint " $EXT_SUB_URL"
     hint " $EXT_SUB_JSON_URL"
+    if [ -s "$URI_FILE" ]; then
+      info "\n VLESS URI $(text 80):"
+      hint " $EXT_SUB_TXT_URL"
+      hint " $EXT_SUB_URI_URL"
+    fi
     if [ -x "${WORK_DIR}/qrencode" ]; then
       info "\n $(text 80) QRcode:"
       hint " $(${WORK_DIR}/qrencode "$EXT_SUB_URL")"

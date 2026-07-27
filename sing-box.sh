@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 
 # 当前脚本版本号
-VERSION='v1.3.19 (2026.07.24)'
+VERSION='v1.3.20 (2026.07.25)'
 
 # Github 反代加速代理
 GITHUB_PROXY=('https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/')
 
 # 各变量默认值
-TEMP_DIR='/tmp/sing-box'
-WORK_DIR='/etc/sing-box'
+APP_NAME="${APP_NAME:-sing-box}"
+BIN_NAME="${BIN_NAME:-sing-box}"
+SING_BOX_SERVICE_NAME="${SING_BOX_SERVICE_NAME:-sing-box}"
+ARGO_SERVICE_NAME="${ARGO_SERVICE_NAME:-argo}"
+SHORTCUT_NAME="${SHORTCUT_NAME:-sb}"
+TEMP_DIR="${TEMP_DIR:-/tmp/sing-box}"
+WORK_DIR="${WORK_DIR:-/etc/sing-box}"
+SING_BOX_BIN="${WORK_DIR}/${BIN_NAME}"
+CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-${WORK_DIR}/cloudflared}"
+SHORTCUT_PATH="/usr/bin/${SHORTCUT_NAME}"
+NGINX_PID_FILE="${NGINX_PID_FILE:-/var/run/nginx.pid}"
+FIREWALL_COMMENT_PREFIX="${FIREWALL_COMMENT_PREFIX:-Sing-box Family Bucket}"
 EXT_MANAGER_API_PORT_DEFAULT=8080
 EXT_NODE_API_PORT_DEFAULT=7000
 EXT_ADMIN_PORT_DEFAULT=8081
@@ -46,8 +56,8 @@ mkdir -p "$TEMP_DIR"
 
 E[0]="Language:\n 1. English (default) \n 2. 简体中文"
 C[0]="${E[0]}"
-E[1]="1. Use sing-box-extended core; 2. Add manager/admin panel and node mode settings; 3. Add Extended user subscription export"
-C[1]="1. 使用 sing-box-extended 内核; 2. 增加管理端/Admin Panel 与节点端设置; 3. 增加 Extended 用户订阅导出"
+E[1]="1. Use sing-box-extended core; 2. Add manager/admin panel and node mode settings; 3. Add Extended sing-box user subscription export"
+C[1]="1. 使用 sing-box-extended 内核; 2. 增加管理端/Admin Panel 与节点端设置; 3. 增加 Extended 用户 sing-box 订阅导出"
 E[2]="Downloading Sing-box. Please wait a seconds ..."
 C[2]="下载 Sing-box 中，请稍等 ..."
 E[3]="Input errors up to 5 times.The script is aborted."
@@ -102,16 +112,16 @@ E[27]="close"
 C[27]="关闭"
 E[28]="open"
 C[28]="开启"
-E[29]="View links (sb -n)"
-C[29]="查看节点信息 (sb -n)"
+E[29]="View links (${SHORTCUT_NAME} -n)"
+C[29]="查看节点信息 (${SHORTCUT_NAME} -n)"
 E[30]="Listen ports  (current: \${_val})"
 C[30]="监听端口  (当前: \${_val})"
-E[31]="Sync Sing-box to the latest version (sb -v)"
-C[31]="同步 Sing-box 至最新版本 (sb -v)"
-E[32]="Upgrade kernel, turn on BBR, change Linux system (sb -b)"
-C[32]="升级内核、安装BBR、DD脚本 (sb -b)"
-E[33]="Uninstall (sb -u)"
-C[33]="卸载 (sb -u)"
+E[31]="Sync Sing-box to the latest version (${SHORTCUT_NAME} -v)"
+C[31]="同步 Sing-box 至最新版本 (${SHORTCUT_NAME} -v)"
+E[32]="Upgrade kernel, turn on BBR, change Linux system (${SHORTCUT_NAME} -b)"
+C[32]="升级内核、安装BBR、DD脚本 (${SHORTCUT_NAME} -b)"
+E[33]="Uninstall (${SHORTCUT_NAME} -u)"
+C[33]="卸载 (${SHORTCUT_NAME} -u)"
 E[34]="Install Sing-box"
 C[34]="安装 Sing-box"
 E[35]="Exit"
@@ -168,8 +178,8 @@ E[60]="The order of the selected protocols and ports is as follows:"
 C[60]="选择的协议及端口次序如下:"
 E[61]="There are no replaceable Argo tunnels."
 C[61]="没有可更换的Argo 隧道"
-E[62]="Add / Remove protocols (sb -r)"
-C[62]="增加 / 删除协议 (sb -r)"
+E[62]="Add / Remove protocols (${SHORTCUT_NAME} -r)"
+C[62]="增加 / 删除协议 (${SHORTCUT_NAME} -r)"
 E[63]="(1/3) Installed protocols."
 C[63]="(1/3) 已安装的协议"
 E[64]="Please select the protocols to be removed (multiple selections possible. Press Enter to skip):"
@@ -186,12 +196,12 @@ E[69]="Install sba scripts (argo + sing-box) [https://github.com/fscarmen/sba]"
 C[69]="安装 sba 脚本 (argo + sing-box) [https://github.com/fscarmen/sba]"
 E[70]="Please enter the reality private key (privateKey), skip to generate randomly:"
 C[70]="请输入 reality 的密钥(privateKey)，跳过则随机生成:"
-E[71]="Create shortcut [ sb ] successfully."
-C[71]="创建快捷 [ sb ] 指令成功!"
+E[71]="Create shortcut [ ${SHORTCUT_NAME} ] successfully."
+C[71]="创建快捷 [ ${SHORTCUT_NAME} ] 指令成功!"
 E[72]="Path to each client configuration file: ${WORK_DIR}/subscribe/\n The full template can be found at:\n https://github.com/chika0801/sing-box-examples/tree/main/Tun"
 C[72]="各客户端配置文件路径: ${WORK_DIR}/subscribe/\n 完整模板可参照:\n https://github.com/chika0801/sing-box-examples/tree/main/Tun"
-E[73]="There is no protocol left, if you are sure please re-run [ sb -u ] to uninstall all."
-C[73]="没有协议剩下，如确定请重新执行 [ sb -u ] 卸载所有"
+E[73]="There is no protocol left, if you are sure please re-run [ ${SHORTCUT_NAME} -u ] to uninstall all."
+C[73]="没有协议剩下，如确定请重新执行 [ ${SHORTCUT_NAME} -u ] 卸载所有"
 E[74]="Keep protocols"
 C[74]="保留协议"
 E[75]="Add protocols"
@@ -228,8 +238,8 @@ E[90]="Argo tunnel is: \$ARGO_TYPE\\\n The domain is: \$ARGO_DOMAIN"
 C[90]="Argo 隧道类型为: \$ARGO_TYPE\\\n 域名是: \$ARGO_DOMAIN"
 E[91]="Argo tunnel type:\n 1. Try\n 2. Token or Json. Including created through Cloudflare API"
 C[91]="Argo 隧道类型:\n 1. Try\n 2. Token 或者 Json，包括通过 Cloudflare API 创建"
-E[92]="Change the Argo tunnel (sb -t)"
-C[92]="更换 Argo 隧道 (sb -t)"
+E[92]="Change the Argo tunnel (${SHORTCUT_NAME} -t)"
+C[92]="更换 Argo 隧道 (${SHORTCUT_NAME} -t)"
 E[93]="Can't get the temporary tunnel domain, script exits. Feedback:[https://github.com/fscarmen/sing-box/issues]"
 C[93]="获取不到临时隧道的域名，脚本退出，问题反馈:[https://github.com/fscarmen/sing-box/issues]"
 E[94]="Please bind \[\${ARGO_DOMAIN}] tunnel TYPE to HTTP and URL to \[\localhost:\${PORT_NGINX}] in Cloudflare."
@@ -248,8 +258,8 @@ E[100]="Can't get the official latest version. Script exits."
 C[100]="获取不到官方的最新版本，脚本退出!"
 E[101]="The privateKey should be a 43-character base64url encoding; please check."
 C[101]="privateKey 应该是43位的 base64url 编码，请检查"
-E[102]="Backing up old version sing-box to ${WORK_DIR}/sing-box.bak"
-C[102]="已备份旧版本 sing-box 到 ${WORK_DIR}/sing-box.bak"
+E[102]="Backing up old version sing-box to ${WORK_DIR}/${BIN_NAME}.bak"
+C[102]="已备份旧版本 sing-box 到 ${WORK_DIR}/${BIN_NAME}.bak"
 E[103]="New version \$ONLINE is running successfully, backup file deleted"
 C[103]="新版本 \$ONLINE 运行成功，已删除备份文件"
 E[104]="New version failed to run \$ONLINE, restoring old version \$LOCAL ..."
@@ -274,8 +284,8 @@ E[113]="Failed to change CDN, using random privateKey"
 C[113]="privateKey 格式失败次数过多，已使用随机私钥"
 E[114]="Invalid privateKey format: expected a 43-character base64url-encoded string."
 C[114]="privateKey 私钥格式错误，应该为 43位 base64url 编码"
-E[115]="Quick install mode (all protocols + subscription) (sb -k)"
-C[115]="极速安装模式 (所有协议 + 订阅) (sb -l)"
+E[115]="Quick install mode (all protocols + subscription) (${SHORTCUT_NAME} -k)"
+C[115]="极速安装模式 (所有协议 + 订阅) (${SHORTCUT_NAME} -l)"
 E[116]="Failed to generate publicKey from privateKey, using random privateKey"
 C[116]="从 privateKey 生成 publicKey 失败，将使用随机公私钥"
 E[117]="Continue with quick fast tunnel"
@@ -286,8 +296,8 @@ E[119]="Using Cloudflare API to create Tunnel and handle DNS config..."
 C[119]="使用 Cloudflare API 创建 Tunnel 和处理 DNS 配置..."
 E[120]="Found existing tunnel with the same name. Tunnel ID: \$EXISTING_TUNNEL_ID. Status: \$EXISTING_TUNNEL_STATUS. Overwrite? [Y/n] (default is Y):"
 C[120]="发现同名隧道已创建，隧道 ID: \$EXISTING_TUNNEL_ID，状态: \$EXISTING_TUNNEL_STATUS。是否覆盖? [Y/n] (默认为 Y):"
-E[121]="Change node configuration (sb -d)"
-C[121]="修改节点配置 (sb -d)"
+E[121]="Change node configuration (${SHORTCUT_NAME} -d)"
+C[121]="修改节点配置 (${SHORTCUT_NAME} -d)"
 E[122]="Invalid access token. Please roll at https://dash.cloudflare.com/profile/api-tokens to re-generate."
 C[122]="Token 访问令牌无效。请在 https://dash.cloudflare.com/profile/api-tokens 轮转，以重新获取"
 E[123]="Token zone resource failed. The tunnel root domain and the authorized domain of the token are inconsistent. Please go to https://dash.cloudflare.com/profile/api-tokens to re-authorize."
@@ -432,14 +442,14 @@ E[193]="Extended API key"
 C[193]="Extended API Key"
 E[194]="Extended node UUID"
 C[194]="Extended 节点 UUID"
-E[195]="Extended user subscription (sb --EXT_SUB [username])"
-C[195]="Extended 用户订阅 (sb --EXT_SUB [用户名])"
+E[195]="Extended user subscription (${SHORTCUT_NAME} --EXT_SUB [username])"
+C[195]="Extended 用户订阅 (${SHORTCUT_NAME} --EXT_SUB [用户名])"
 E[196]="Enter Extended username (leave blank for all users):"
 C[196]="请输入 Extended 用户名 (留空生成全部用户):"
 E[197]="No Extended users found."
 C[197]="没有找到 Extended 用户。"
-E[198]="Extended user subscription generated"
-C[198]="Extended 用户订阅已生成"
+E[198]="Extended sing-box user subscription generated"
+C[198]="Extended 用户 sing-box 订阅已生成"
 E[199]="Unsupported Extended user/protocol skipped"
 C[199]="已跳过不支持的 Extended 用户/协议"
 
@@ -825,7 +835,7 @@ change_config() {
     done
     fetch_nodes_value
     [ -n "$PORT_NGINX" ] && UUID_CONFIRM=$(awk '/location/ && /\// {match($0, /\/([^ \/]+)/, arr); p=arr[1]; sub(/-(vmess|vless|auto2|auto).*/, "", p); print p; exit}' ${WORK_DIR}/nginx.conf) && export_nginx_conf_file
-    cmd_systemctl reload sing-box
+    cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
     [ -n "$ARGO_DOMAIN" ] && export_argo_json_file
     sync_firewall_rules
     sleep 2
@@ -865,7 +875,7 @@ change_config() {
       set_hy2_realm_config enable
       [ "$IS_HY2_WARP" = 'is_hy2_warp' ] && sync_hy2_warp_route enable || sync_hy2_warp_route disable
     fi
-    cmd_systemctl reload sing-box
+    cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
     export_list
     return
   elif [ "$KEY" = "hy2hopping" ]; then
@@ -986,7 +996,7 @@ change_config() {
       warning " Invalid selection " && return
     fi
 
-    cmd_systemctl reload sing-box
+    cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
     export_list
     return
   fi
@@ -1013,7 +1023,7 @@ change_config() {
     find ${WORK_DIR}/subscribe -type f | xargs -P 50 sed -i "s|${OLD}|${NEW_VAL}|g" 2>/dev/null
   else
     find ${WORK_DIR} -type f | xargs -P 50 sed -i "s|${OLD}|${NEW_VAL}|g" 2>/dev/null
-    [[ ! "$KEY" =~ ^(fingerprint)$ ]] && cmd_systemctl reload sing-box
+    [[ ! "$KEY" =~ ^(fingerprint)$ ]] && cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
   fi
   export_list
 }
@@ -1699,10 +1709,10 @@ extended_settings_menu() {
   write_extended_services_conf
   sanitize_wireguard_reserved
 
-  if ! ${WORK_DIR}/sing-box check -C ${WORK_DIR}/conf >/dev/null; then
+  if ! "$SING_BOX_BIN" check -C ${WORK_DIR}/conf >/dev/null; then
     error "\n $(text 174) \n"
   fi
-  cmd_systemctl reload sing-box
+  cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
   sync_firewall_rules
   export_list
 }
@@ -1983,9 +1993,9 @@ custom_route_add() {
   custom_route_compact_rules
 
   info " $(text 157) "
-  cmd_systemctl reload sing-box
+  cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
   sleep 2
-  cmd_systemctl status sing-box &>/dev/null && \
+  cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && \
     info "\n Sing-box $(text 28) $(text 37) \n" || \
     warning "\n Sing-box $(text 27) $(text 38) \n"
 }
@@ -2123,9 +2133,9 @@ custom_route_delete() {
   fi
 
   info " $(text 160) "
-  cmd_systemctl reload sing-box
+  cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
   sleep 2
-  cmd_systemctl status sing-box &>/dev/null && \
+  cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && \
     info "\n Sing-box $(text 28) $(text 37) \n" || \
     warning "\n Sing-box $(text 27) $(text 38) \n"
 }
@@ -2187,7 +2197,7 @@ input_argo_auth() {
   fi
 
   if [[ ( -z "$ARGO_DOMAIN" || "$ARGO_DOMAIN" =~ trycloudflare\.com$ ) && ( "$IS_CHANGE_ARGO" = 'is_add_protocols' || "$IS_CHANGE_ARGO" = 'is_install' || "$NONINTERACTIVE_INSTALL" = 'noninteractive_install' ) ]]; then
-    ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX"
+    ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX"
   elif [ -n "${ARGO_DOMAIN}" ]; then
     if [ -z "${ARGO_AUTH}" ]; then
       until [[ "$ARGO_AUTH" =~ TunnelSecret || "$ARGO_AUTH" =~ [A-Z0-9a-z=]{120,250}$ || "${#ARGO_AUTH}" =~ ^[3-6][0-9]$ ]]; do
@@ -2202,26 +2212,26 @@ input_argo_auth() {
       ARGO_TYPE=is_json_argo
       ARGO_JSON=${ARGO_AUTH//[ ]/}
       [ "$IS_CHANGE_ARGO" = 'is_install' ] && export_argo_json_file $TEMP_DIR || export_argo_json_file ${WORK_DIR}
-      ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run"
+      ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run"
     elif [[ "${ARGO_AUTH}" =~ [A-Z0-9a-z=]{120,250}$ ]]; then
       ARGO_TYPE=is_token_argo
       ARGO_TOKEN=$(awk '{print $NF}' <<< "$ARGO_AUTH")
-      ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}"
+      ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}"
     elif [[ "${#ARGO_AUTH}" =~ ^[3-6][0-9]$ ]]; then
       hint "\n $(text 119) \n "
       create_argo_tunnel "${ARGO_AUTH}" "${ARGO_DOMAIN}" "${PORT_NGINX}"
       if [[ "$ARGO_JSON" =~ TunnelSecret ]]; then
         ARGO_TYPE=is_json_argo
         [ "$IS_CHANGE_ARGO" = 'is_install' ] && export_argo_json_file $TEMP_DIR || export_argo_json_file ${WORK_DIR}
-        ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run"
+        ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run"
       elif [[ "${#ARGO_TOKEN}" =~ ^[0-9]+$ && "${#ARGO_TOKEN}" -ge 120 && "${#ARGO_TOKEN}" -le 250 ]]; then
         ARGO_TYPE=is_token_argo
-        ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}"
+        ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}"
       else
         # 创建隧道失败，回退到使用临时隧道
         hint "\n $(text 117) \n "
         unset ARGO_DOMAIN
-        ARGO_RUNS="${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX"
+        ARGO_RUNS="${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX"
       fi
     fi
   fi
@@ -2248,7 +2258,7 @@ change_argo() {
       ;;
     * )
       ARGO_TYPE='Try'
-      cmd_systemctl enable argo && sleep 2 && cmd_systemctl status argo &>/dev/null && fetch_quicktunnel_domain
+      cmd_systemctl enable "$ARGO_SERVICE_NAME" && sleep 2 && cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && fetch_quicktunnel_domain
   esac
 
   fetch_nodes_value
@@ -2258,21 +2268,21 @@ change_argo() {
 
   case "$CHANGE_TO" in
     1 )
-      cmd_systemctl disable argo
+      cmd_systemctl disable "$ARGO_SERVICE_NAME"
       [ -s ${WORK_DIR}/tunnel.json ] && rm -f ${WORK_DIR}/tunnel.{json,yml}
 
       # 根据系统类型修改配置文件
-      [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX@g" ${ARGO_DAEMON_FILE}
+      [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --no-autoupdate --url http://localhost:$PORT_NGINX@g" ${ARGO_DAEMON_FILE}
       ;;
     2 )
       [ -s ${WORK_DIR}/tunnel.json ] && rm -f ${WORK_DIR}/tunnel.{json,yml}
       input_argo_auth is_change_argo
-      cmd_systemctl disable argo
+      cmd_systemctl disable "$ARGO_SERVICE_NAME"
 
       if [ -n "$ARGO_TOKEN" ]; then
-        [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto run --token ${ARGO_TOKEN}\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${WORK_DIR}/cloudflared tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}@g" ${ARGO_DAEMON_FILE}
+        [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto run --token ${ARGO_TOKEN}\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${CLOUDFLARED_BIN} tunnel --edge-ip-version auto run --token ${ARGO_TOKEN}@g" ${ARGO_DAEMON_FILE}
       elif [ -n "$ARGO_JSON" ]; then
-        [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${WORK_DIR}/cloudflared tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run@g" ${ARGO_DAEMON_FILE}
+        [ "$SYSTEM" = 'Alpine' ] && sed -i "s@^command_args=.*@command_args=\"--edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run\"@g" ${ARGO_DAEMON_FILE} || sed -i "s@ExecStart=.*@ExecStart=${CLOUDFLARED_BIN} tunnel --edge-ip-version auto --config ${WORK_DIR}/tunnel.yml run@g" ${ARGO_DAEMON_FILE}
       fi
 
       # 更新相关配置文件中的域名
@@ -2284,7 +2294,7 @@ change_argo() {
   esac
 
   # 启用 Argo 服务
-  cmd_systemctl enable argo
+  cmd_systemctl enable "$ARGO_SERVICE_NAME"
 
   # 更新节点信息和配置
   fetch_nodes_value
@@ -2336,8 +2346,8 @@ check_install() {
     if [ -s ${SINGBOX_DAEMON_FILE} ]; then
       local OPENRC_EXECSTART=$(grep '^command=' ${SINGBOX_DAEMON_FILE})
       case "$OPENRC_EXECSTART" in
-        *"${WORK_DIR}/sing-box"* )
-          if rc-service sing-box status &>/dev/null; then
+        *"${SING_BOX_BIN}"* )
+          if rc-service "$SING_BOX_SERVICE_NAME" status &>/dev/null; then
             STATUS[0]=$(text 28)
           else
             STATUS[0]=$(text 27)
@@ -2354,8 +2364,8 @@ check_install() {
     if [ -s ${SINGBOX_DAEMON_FILE} ]; then
       SYSTEMD_EXECSTART=$(grep '^ExecStart=' ${SINGBOX_DAEMON_FILE})
       case "$SYSTEMD_EXECSTART" in
-        "ExecStart=${WORK_DIR}/sing-box run -C ${WORK_DIR}/conf/" | "ExecStart=${WORK_DIR}/sing-box run -C ${WORK_DIR}/conf" )
-          [ "$(systemctl is-active sing-box)" = 'active' ] && STATUS[0]=$(text 28) || STATUS[0]=$(text 27)
+        "ExecStart="$SING_BOX_BIN" run -C ${WORK_DIR}/conf/" | "ExecStart="$SING_BOX_BIN" run -C ${WORK_DIR}/conf" )
+          [ "$(systemctl is-active "$SING_BOX_SERVICE_NAME")" = 'active' ] && STATUS[0]=$(text 28) || STATUS[0]=$(text 27)
           ;;
         'ExecStart=/etc/v2ray-agent/sing-box/sing-box run -c /etc/v2ray-agent/sing-box/conf/config.json' )
           SING_BOX_SCRIPT='mack-a/v2ray-agent' && error "\n $(text 99) \n"
@@ -2371,22 +2381,8 @@ check_install() {
           ;;
         * )
           # 检查是否是自己的脚本安装的，但路径略有不同
-          if [[ "$SYSTEMD_EXECSTART" =~ "ExecStart=${WORK_DIR}/sing-box run" ]]; then
-            [ "$(systemctl is-active sing-box)" = 'active' ] && STATUS[0]=$(text 28) || STATUS[0]=$(text 27)
-          else
-            SING_BOX_SCRIPT='Unknown or customized sing-box' && error "\n $(text 99) \n"
-          fi
-      esac
-    elif [ -s /lib/systemd/system/sing-box.service ]; then
-      SYSTEMD_EXECSTART=$(grep '^ExecStart=' /lib/systemd/system/sing-box.service)
-      case "$SYSTEMD_EXECSTART" in
-        'ExecStart=/etc/sing-box/bin/sing-box run -c /etc/sing-box/config.json -C /etc/sing-box/conf' )
-          SING_BOX_SCRIPT='233boy/sing-box' && error "\n $(text 99) \n"
-          ;;
-        * )
-          # 检查是否是自己的脚本安装的，但路径略有不同
-          if [[ "$SYSTEMD_EXECSTART" =~ "ExecStart=${WORK_DIR}/sing-box run" ]]; then
-            [ "$(systemctl is-active sing-box)" = 'active' ] && STATUS[0]=$(text 28) || STATUS[0]=$(text 27)
+          if [[ "$SYSTEMD_EXECSTART" =~ "ExecStart="$SING_BOX_BIN" run" ]]; then
+            [ "$(systemctl is-active "$SING_BOX_SERVICE_NAME")" = 'active' ] && STATUS[0]=$(text 28) || STATUS[0]=$(text 27)
           else
             SING_BOX_SCRIPT='Unknown or customized sing-box' && error "\n $(text 99) \n"
           fi
@@ -2405,7 +2401,7 @@ check_install() {
   } &
 
   # 如果有需要，后台静默下载 sing-box
-  if [ "${STATUS[0]}" = "$(text 26)" ] && [ ! -s ${WORK_DIR}/sing-box ]; then
+  if [ "${STATUS[0]}" = "$(text 26)" ] && [ ! -s "$SING_BOX_BIN" ]; then
     # 任务 1: 下载 sing-box
     {
       local ONLINE=$(get_sing_box_version)
@@ -2433,8 +2429,9 @@ check_install() {
 
   elif [ "${STATUS[0]}" != "$(text 26)" ]; then
     # 查 sing-box 进程号，运行时长和内存占用，占用的端口
-    SING_BOX_VERSION="Version: $(${WORK_DIR}/sing-box version | awk '/version/{print $NF}')"
-    [ "${STATUS[0]}" = "$(text 28)" ] && SING_BOX_PID=$(awk '/sing-box run/{print $1}' <<< "$PS_LIST") && [[ "$SING_BOX_PID" =~ ^[0-9]+$ ]] && SING_BOX_MEMORY_USAGE="$(text 58): $(awk '/VmRSS/{printf "%.1f\n", $2/1024}' /proc/$SING_BOX_PID/status) MB"
+    SING_BOX_VERSION="Version: $("$SING_BOX_BIN" version | awk '/version/{print $NF}')"
+    SING_BOX_PID=$(awk -v bin="$BIN_NAME" '$0 ~ (bin " run") {print $1; exit}' <<< "$PS_LIST")
+    [ "${STATUS[0]}" = "$(text 28)" ] && [[ "$SING_BOX_PID" =~ ^[0-9]+$ ]] && SING_BOX_MEMORY_USAGE="$(text 58): $(awk '/VmRSS/{printf "%.1f\n", $2/1024}' /proc/$SING_BOX_PID/status) MB"
 
     NOW_PORTS=$(awk -F ':|,' '/listen_port/{print $2}' ${WORK_DIR}/conf/*)
     NOW_START_PORT=$(awk 'NR == 1 { min = $0 } { if ($0 < min) min = $0; count++ } END {print min}' <<< "$NOW_PORTS")
@@ -2445,7 +2442,7 @@ check_install() {
     # 检查 Argo 服务状态
     STATUS[1]=$(text 26) && IS_ARGO=no_argo
     [ -s ${ARGO_DAEMON_FILE} ] && IS_ARGO=is_argo && STATUS[1]=$(text 27)
-    cmd_systemctl status argo &>/dev/null && STATUS[1]=$(text 28)
+    cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && STATUS[1]=$(text 28)
   fi
 
   # 检查 Argo 服务类型
@@ -2474,13 +2471,13 @@ check_install() {
   fi
 
   # 如果有需要，后台静默下载 cloudflared
-  if [[ "${STATUS[1]}" = "$(text 26)" || "$NONINTERACTIVE_INSTALL" = 'noninteractive_install' ]] && [ ! -s ${WORK_DIR}/cloudflared ]; then
+  if [[ "${STATUS[1]}" = "$(text 26)" || "$NONINTERACTIVE_INSTALL" = 'noninteractive_install' ]] && [ ! -s "$CLOUDFLARED_BIN" ]; then
     {
       wget --no-check-certificate -qO $TEMP_DIR/cloudflared ${GH_PROXY}https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARGO_ARCH >/dev/null 2>&1 && chmod +x $TEMP_DIR/cloudflared >/dev/null 2>&1
     }&
   elif [ "${STATUS[1]}" != "$(text 26)" ]; then
     # 查 Argo 进程号，运行时长和内存占用
-    ARGO_VERSION=$(${WORK_DIR}/cloudflared -v | awk '{print $3}' | sed "s@^@Version: &@g")
+    ARGO_VERSION=$(${CLOUDFLARED_BIN} -v | awk '{print $3}' | sed "s@^@Version: &@g")
     [ "${STATUS[1]}" = "$(text 28)" ] && ARGO_PID=$(awk '/cloudflared/{print $1}' <<< "$PS_LIST") && [[ "$ARGO_PID" =~ ^[0-9]+$ ]] && ARGO_MEMORY_USAGE="$(text 58): $(awk '/VmRSS/{printf "%.1f\n", $2/1024}' /proc/$ARGO_PID/status) MB"
   fi
 
@@ -2527,7 +2524,7 @@ cmd_systemctl() {
         rc-service "$2" restart >/dev/null 2>&1
         ;;
       reload )
-        local MAINPID=$(cat /var/run/sing-box.pid 2>/dev/null)
+        local MAINPID=$(cat "/var/run/${2}.pid" 2>/dev/null)
         if [ -n "$MAINPID" ] && kill -0 "$MAINPID" 2>/dev/null; then
           kill -HUP "$MAINPID" 2>/dev/null
           info "\n $(text 173) \n"
@@ -2544,7 +2541,7 @@ cmd_systemctl() {
     case "$1" in
       enable | disable )
         systemctl "$1" --now "$2" >/dev/null 2>&1
-        if [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = 'sing-box' ] && [ -s $WORK_DIR/nginx.conf ]; then
+        if [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = "$SING_BOX_SERVICE_NAME" ] && [ -s $WORK_DIR/nginx.conf ]; then
           if [ "$1" = 'enable' ]; then
             nginx_run
           else
@@ -2553,17 +2550,17 @@ cmd_systemctl() {
         fi
         ;;
       restart )
-        [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = 'sing-box' ] && [ -s $WORK_DIR/nginx.conf ] && nginx_stop
+        [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = "$SING_BOX_SERVICE_NAME" ] && [ -s $WORK_DIR/nginx.conf ] && nginx_stop
         systemctl restart "$2" >/dev/null 2>&1
-        [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = 'sing-box' ] && [ -s $WORK_DIR/nginx.conf ] && nginx_run
+        [ "$IS_CENTOS" = 'CentOS7' ] && [ "$2" = "$SING_BOX_SERVICE_NAME" ] && [ -s $WORK_DIR/nginx.conf ] && nginx_run
         ;;
       reload )
-        local MAINPID=$(systemctl show -p MainPID sing-box 2>/dev/null | awk -F= '{print $2}')
+        local MAINPID=$(systemctl show -p MainPID "$2" 2>/dev/null | awk -F= '{print $2}')
         if [ -n "$MAINPID" ] && [ "$MAINPID" -gt 0 ] 2>/dev/null; then
-          systemctl kill -s HUP sing-box >/dev/null 2>&1
+          systemctl kill -s HUP "$2" >/dev/null 2>&1
           info "\n $(text 173) \n"
         else
-          systemctl restart sing-box >/dev/null 2>&1
+          systemctl restart "$2" >/dev/null 2>&1
         fi
         ;;
       status )
@@ -2619,12 +2616,12 @@ check_system_info() {
   [[ "$(sed -E 's/[^0-9.]//g; s/\..*//' <<< "$SYS")" -lt "${MAJOR[int]}" ]] && error " $(text 6) "
 
   # 针对部分系统作特殊处理，CentOS7 使用 yum，以上使用 dnf
-  ARGO_DAEMON_FILE='/etc/systemd/system/argo.service'; SINGBOX_DAEMON_FILE='/etc/systemd/system/sing-box.service'
+  ARGO_DAEMON_FILE="/etc/systemd/system/${ARGO_SERVICE_NAME}.service"; SINGBOX_DAEMON_FILE="/etc/systemd/system/${SING_BOX_SERVICE_NAME}.service"
   if [ "$SYSTEM" = 'CentOS' ]; then
     IS_CENTOS="CentOS$(sed -E 's/[^0-9.]//g; s/\..*//' <<< "$SYS")"
     [ "$IS_CENTOS" != 'CentOS7' ] && int=5
   elif [ "$SYSTEM" = 'Alpine' ]; then
-    ARGO_DAEMON_FILE='/etc/init.d/argo'; SINGBOX_DAEMON_FILE='/etc/init.d/sing-box'
+    ARGO_DAEMON_FILE="/etc/init.d/${ARGO_SERVICE_NAME}"; SINGBOX_DAEMON_FILE="/etc/init.d/${SING_BOX_SERVICE_NAME}"
   fi
 
   # 判断虚拟化
@@ -2665,7 +2662,7 @@ add_port_hopping_nat() {
   local PORT_HOPPING_START=$1
   local PORT_HOPPING_END=$2
   local PORT_HOPPING_TARGET=$3
-  local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (Sing-box Family Bucket)"
+  local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (${FIREWALL_COMMENT_PREFIX})"
   local FW_BACKEND
   local FW_CHECK=() FW_INSTALL=() FW_TO_INSTALL=()
 
@@ -2753,7 +2750,7 @@ del_port_hopping_nat() {
     del_port_hopping_ufw_rules || warning "\n $(text 146) \n"
 
   elif [ "$SYSTEM" = 'Alpine' ]; then
-    local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (Sing-box Family Bucket)"
+    local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (${FIREWALL_COMMENT_PREFIX})"
     iptables  --table nat -D PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -m comment --comment "$COMMENT" -j DNAT --to-destination :${PORT_HOPPING_TARGET} 2>/dev/null
     ip6tables --table nat -D PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -m comment --comment "$COMMENT" -j DNAT --to-destination :${PORT_HOPPING_TARGET} 2>/dev/null
 
@@ -2762,7 +2759,7 @@ del_port_hopping_nat() {
     firewall-cmd --reload >/dev/null 2>&1
 
   else
-    local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (Sing-box Family Bucket)"
+    local COMMENT="NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} to ${PORT_HOPPING_TARGET} (${FIREWALL_COMMENT_PREFIX})"
     iptables  --table nat -D PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -m comment --comment "$COMMENT" -j DNAT --to-destination :${PORT_HOPPING_TARGET} 2>/dev/null
     ip6tables --table nat -D PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -m comment --comment "$COMMENT" -j DNAT --to-destination :${PORT_HOPPING_TARGET} 2>/dev/null
     [ "$(systemctl is-active netfilter-persistent)" = 'active' ] && netfilter-persistent save 2>/dev/null
@@ -2781,7 +2778,7 @@ check_port_hopping_nat() {
     check_port_hopping_ufw_rules
 
   elif [ "$SYSTEM" = 'Alpine' ]; then
-    local IPTABLES_PREROUTING_LIST=$(iptables --table nat --list-rules PREROUTING 2>/dev/null | grep 'Sing-box Family Bucket')
+    local IPTABLES_PREROUTING_LIST=$(iptables --table nat --list-rules PREROUTING 2>/dev/null | grep "$FIREWALL_COMMENT_PREFIX")
     [ -n "$IPTABLES_PREROUTING_LIST" ] && \
       HY2_PORT_HOPPING_RANGE=$(awk '{for (i=1; i<=NF; i++) if ($i=="--dport") {print $(i+1); exit}}' <<< "$IPTABLES_PREROUTING_LIST") && \
       PORT_HOPPING_TARGET=$(awk '{for (i=1; i<=NF; i++) if ($i=="--to-destination") {gsub(/^:/,"",$(i+1)); print $(i+1); exit}}' <<< "$IPTABLES_PREROUTING_LIST")
@@ -2795,7 +2792,7 @@ check_port_hopping_nat() {
       PORT_HOPPING_TARGET=$(sed "s/.*toport=\([0-9]\+\).*/\1/" <<< "$FIREWALL_LIST")
 
   else
-    local IPTABLES_PREROUTING_LIST=$(iptables --table nat --list-rules PREROUTING 2>/dev/null | grep 'Sing-box Family Bucket')
+    local IPTABLES_PREROUTING_LIST=$(iptables --table nat --list-rules PREROUTING 2>/dev/null | grep "$FIREWALL_COMMENT_PREFIX")
     [ -n "$IPTABLES_PREROUTING_LIST" ] && \
       HY2_PORT_HOPPING_RANGE=$(awk '{for (i=1; i<=NF; i++) if ($i=="--dport") {print $(i+1); exit}}' <<< "$IPTABLES_PREROUTING_LIST") && \
       PORT_HOPPING_TARGET=$(awk '{for (i=1; i<=NF; i++) if ($i=="--to-destination") {gsub(/^:/,"",$(i+1)); print $(i+1); exit}}' <<< "$IPTABLES_PREROUTING_LIST")
@@ -3116,7 +3113,7 @@ add_port_hopping_ufw_rules() {
   local PORT_HOPPING_END=$2
   local PORT_HOPPING_TARGET=$3
   local TARGET_PORT="$3"
-  local COMMENT="Sing-box Family Bucket UFW NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} -> ${TARGET_PORT}"
+  local COMMENT="${FIREWALL_COMMENT_PREFIX} UFW NAT ${PORT_HOPPING_START}:${PORT_HOPPING_END} -> ${TARGET_PORT}"
 
   [ -z "$PORT_HOPPING_START" ] && return 1
   [ -z "$PORT_HOPPING_END" ] && return 1
@@ -3204,14 +3201,14 @@ del_port_hopping_ufw_block() {
 
   TEMP_RULES_FILE="${TEMP_DIR}/$(basename "$RULES_FILE")"
 
-  awk -v ip_version="$IP_VERSION" '
+  awk -v ip_version="$IP_VERSION" -v prefix="$FIREWALL_COMMENT_PREFIX" '
     BEGIN { in_block=0 }
     {
-      if ($0 ~ "^# Sing-box Family Bucket UFW NAT .* " ip_version " BEGIN$") {
+      if ($0 ~ "^# " prefix " UFW NAT .* " ip_version " BEGIN$") {
         in_block=1
         next
       }
-      if (in_block==1 && $0 ~ "^# Sing-box Family Bucket UFW NAT .* " ip_version " END$") {
+      if (in_block==1 && $0 ~ "^# " prefix " UFW NAT .* " ip_version " END$") {
         in_block=0
         next
       }
@@ -3224,7 +3221,7 @@ del_port_hopping_ufw_block() {
 del_port_hopping_ufw_rules() {
   local UFW_BEFORE_RULES='/etc/ufw/before.rules'
   local UFW_BEFORE6_RULES='/etc/ufw/before6.rules'
-  local COMMENT_PREFIX='Sing-box Family Bucket UFW NAT'
+  local COMMENT_PREFIX="${FIREWALL_COMMENT_PREFIX} UFW NAT"
   local RULE_NUM
   local OLD_START OLD_END
 
@@ -3264,17 +3261,17 @@ check_port_hopping_ufw_rules() {
   DETECTED_TARGET=$(awk -F '[:,]' '/"listen_port"/{gsub(/[[:space:]]/, "", $2); print $2; exit}' ${WORK_DIR}/conf/*${NODE_TAG[1]}_inbounds.json 2>/dev/null)
 
   if [ -s "$UFW_BEFORE_RULES" ]; then
-    UFW_RULE=$(awk '
-      /Sing-box Family Bucket UFW NAT .* IPv4 BEGIN/ { in_block=1; next }
-      /Sing-box Family Bucket UFW NAT .* IPv4 END/   { in_block=0 }
+    UFW_RULE=$(awk -v prefix="$FIREWALL_COMMENT_PREFIX" '
+      $0 ~ prefix " UFW NAT .* IPv4 BEGIN" { in_block=1; next }
+      $0 ~ prefix " UFW NAT .* IPv4 END"   { in_block=0 }
       in_block && /-A PREROUTING -p udp/ { print; exit }
     ' "$UFW_BEFORE_RULES")
   fi
 
   if [ -z "$UFW_RULE" ] && [ -s "$UFW_BEFORE6_RULES" ]; then
-    UFW_RULE=$(awk '
-      /Sing-box Family Bucket UFW NAT .* IPv6 BEGIN/ { in_block=1; next }
-      /Sing-box Family Bucket UFW NAT .* IPv6 END/   { in_block=0 }
+    UFW_RULE=$(awk -v prefix="$FIREWALL_COMMENT_PREFIX" '
+      $0 ~ prefix " UFW NAT .* IPv6 BEGIN" { in_block=1; next }
+      $0 ~ prefix " UFW NAT .* IPv6 END"   { in_block=0 }
       in_block && /-A PREROUTING -p udp/ { print; exit }
     ' "$UFW_BEFORE6_RULES")
   fi
@@ -3399,7 +3396,7 @@ collect_exposed_ports() {
 service_port_ufw_comment() {
   local PROTO=$1
   local PORT=$2
-  echo "Sing-box Family Bucket UFW PORT ${PROTO} ${PORT}"
+  echo "${FIREWALL_COMMENT_PREFIX} UFW PORT ${PROTO} ${PORT}"
 }
 
 # 添加 UFW 普通端口规则
@@ -3417,7 +3414,7 @@ add_service_port_rule_ufw() {
 del_service_port_rule_ufw() {
   local PROTO=$1
   local PORT=$2
-  local COMMENT_PREFIX='Sing-box Family Bucket UFW PORT'
+  local COMMENT_PREFIX="${FIREWALL_COMMENT_PREFIX} UFW PORT"
   local RULE_NUM
 
   [ -z "$PROTO" ] || [ -z "$PORT" ] && return 0
@@ -3436,7 +3433,7 @@ del_service_port_rule_ufw() {
 # 清理所有由脚本管理的 UFW 普通端口规则
 purge_service_port_rules_ufw() {
   local RULE_NUM
-  local COMMENT_PREFIX='Sing-box Family Bucket UFW PORT'
+  local COMMENT_PREFIX="${FIREWALL_COMMENT_PREFIX} UFW PORT"
 
   while read -r RULE_NUM; do
     [ -n "$RULE_NUM" ] && ufw --force delete "$RULE_NUM" >/dev/null 2>&1 || true
@@ -3469,7 +3466,7 @@ del_service_port_rule_firewalld() {
 add_service_port_rule_iptables() {
   local PROTO=$1
   local PORT=$2
-  local COMMENT="Sing-box Family Bucket PORT ${PROTO} ${PORT}"
+  local COMMENT="${FIREWALL_COMMENT_PREFIX} PORT ${PROTO} ${PORT}"
 
   [ -z "$PROTO" ] || [ -z "$PORT" ] && return 1
 
@@ -3484,7 +3481,7 @@ add_service_port_rule_iptables() {
 del_service_port_rule_iptables() {
   local PROTO=$1
   local PORT=$2
-  local COMMENT="Sing-box Family Bucket PORT ${PROTO} ${PORT}"
+  local COMMENT="${FIREWALL_COMMENT_PREFIX} PORT ${PROTO} ${PORT}"
 
   [ -z "$PROTO" ] || [ -z "$PORT" ] && return 0
 
@@ -3794,7 +3791,7 @@ export_nginx_conf_file() {
 worker_processes  auto;
 
 error_log  /dev/null;
-pid        /var/run/nginx.pid;
+pid        ${NGINX_PID_FILE};
 
 events {
     worker_connections  1024;
@@ -4079,7 +4076,9 @@ sing-box_json() {
   # 生成 Reality 公私钥，第一次安装的时候，如有指定的私钥，则使用该私钥及生成对应的公钥；如没有指定私钥则使用新生成的；添加协议的时，使用相应数组里的第一个非空值，如全空则像第一次安装那样使用新生成的
   generate_reality_keypair() {
     [ "$1" = 'convert_error' ] && hint " $(text 116) "
-    REALITY_KEYPAIR=$($DIR/sing-box generate reality-keypair) && REALITY_PRIVATE=$(awk '/PrivateKey/{print $NF}' <<< "$REALITY_KEYPAIR") && REALITY_PUBLIC=$(awk '/PublicKey/{print $NF}' <<< "$REALITY_KEYPAIR")
+    local REALITY_BIN="$SING_BOX_BIN"
+    [ "$DIR" = "$TEMP_DIR" ] && REALITY_BIN="$TEMP_DIR/sing-box"
+    REALITY_KEYPAIR=$("$REALITY_BIN" generate reality-keypair) && REALITY_PRIVATE=$(awk '/PrivateKey/{print $NF}' <<< "$REALITY_KEYPAIR") && REALITY_PUBLIC=$(awk '/PublicKey/{print $NF}' <<< "$REALITY_KEYPAIR")
   }
 
   if [[ "${#REALITY_PRIVATE}" = 43 && "${#REALITY_PUBLIC}" = 0 ]]; then
@@ -4676,9 +4675,9 @@ sing-box_systemd() {
   if [ "$SYSTEM" = 'Alpine' ]; then
     local OPENRC_SERVICE="#!/sbin/openrc-run
 
-name=\"sing-box\"
-description=\"sing-box service\"
-command=\"${WORK_DIR}/sing-box\"
+name=\"${SING_BOX_SERVICE_NAME}\"
+description=\"sing-box extended service\"
+command=\"${SING_BOX_BIN}\"
 command_args=\"run -C ${WORK_DIR}/conf\"
 pidfile=\"/var/run/\${RC_SVCNAME}.pid\"
 command_background=\"yes\"
@@ -4749,7 +4748,7 @@ stop() {
   else
     # 原有的 systemd 服务创建代码
     SING_BOX_SERVICE="[Unit]
-Description=sing-box service
+Description=sing-box extended service
 Documentation=https://sing-box.sagernet.org
 After=network.target nss-lookup.target
 
@@ -4762,7 +4761,7 @@ WorkingDirectory=${WORK_DIR}
 "
     [[ -n "$PORT_NGINX" && "$IS_CENTOS" != 'CentOS7' ]] && SING_BOX_SERVICE+="ExecStartPre=$(command -v nginx) -c ${WORK_DIR}/nginx.conf
 "
-    SING_BOX_SERVICE+="ExecStart=${WORK_DIR}/sing-box run -C ${WORK_DIR}/conf
+    SING_BOX_SERVICE+="ExecStart=${SING_BOX_BIN} run -C ${WORK_DIR}/conf
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=10
@@ -4845,7 +4844,7 @@ fetch_nodes_value() {
   [[ -z "$NODE_NAME_CONFIRM" && -s ${WORK_DIR}/subscribe/clash ]] && NODE_NAME_CONFIRM=$(awk -F "'" '/u: &u/{print $2; exit}' ${WORK_DIR}/subscribe/clash)
 
   # 如有 Argo，获取 Argo Tunnel
-  [[ ${STATUS[1]} =~ $(text 27)|$(text 28) ]] && grep -q '\--url' ${ARGO_DAEMON_FILE} && { cmd_systemctl enable argo; sleep 2 && cmd_systemctl status argo &>/dev/null && fetch_quicktunnel_domain; }
+  [[ ${STATUS[1]} =~ $(text 27)|$(text 28) ]] && grep -q '\--url' ${ARGO_DAEMON_FILE} && { cmd_systemctl enable "$ARGO_SERVICE_NAME"; sleep 2 && cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && fetch_quicktunnel_domain; }
 
   # 获取 Nginx 端口和路径
   [[ "${IS_SUB}" = 'is_sub' || "${IS_ARGO}" = 'is_argo' ]] && local NGINX_JSON=$(cat ${WORK_DIR}/nginx.conf) &&
@@ -4924,6 +4923,99 @@ extended_inbound_json() {
   sed '/^[[:space:]]*\/\//d' "$FILE" | jq_exec -c --arg tag "$TAG" '.inbounds[]? | select(.tag == $tag)' 2>/dev/null | head -n1
 }
 
+
+render_sing_box_subscription() {
+  local OUTBOUND_REPLACE="$1"
+  local NODE_REPLACE="$2"
+  local OUT_FILE="$3"
+
+  [ ! -s "$TEMP_DIR/sing-box-template" ] && wget --no-check-certificate --continue -qO "$TEMP_DIR/sing-box-template" "${GH_PROXY}${SUBSCRIBE_TEMPLATE}/sing-box" 2>/dev/null
+  [ -s "$TEMP_DIR/sing-box-template" ] || return 1
+
+  sed "s#\"<OUTBOUND_REPLACE>\",#$OUTBOUND_REPLACE#; s#\"<NODE_REPLACE>\"#${NODE_REPLACE%,}#g" "$TEMP_DIR/sing-box-template" | jq_exec > "$OUT_FILE"
+}
+
+extended_user_sing_box_outbound() {
+  local USER_JSON="$1" INBOUND_JSON="$2" INBOUND_FILE="$3" REMARK="$4" TLS_SERVER_FALLBACK="$5" CERT_BASE64="$6"
+  local USER_TYPE USER_UUID USER_PASSWORD USER_FLOW ALTER_ID IN_TYPE PORT TRANSPORT SECURITY SNI PUBLIC_KEY SHORT_ID SERVICE_NAME PATH_VALUE HOST_VALUE CC
+
+  USER_TYPE=$(jq_exec -r '.type // empty' <<< "$USER_JSON")
+  USER_UUID=$(jq_exec -r '.uuid // empty' <<< "$USER_JSON")
+  USER_PASSWORD=$(jq_exec -r '.password // empty' <<< "$USER_JSON")
+  USER_FLOW=$(jq_exec -r '.flow // empty' <<< "$USER_JSON")
+  ALTER_ID=$(jq_exec -r '.alter_id // 0' <<< "$USER_JSON")
+
+  IN_TYPE=$(jq_exec -r '.type // empty' <<< "$INBOUND_JSON")
+  PORT=$(jq_exec -r '.listen_port // empty' <<< "$INBOUND_JSON")
+  TRANSPORT=$(jq_exec -r '.transport.type // "tcp"' <<< "$INBOUND_JSON")
+  SECURITY=$(jq_exec -r 'if .tls.reality.enabled == true then "reality" elif .tls.enabled == true then "tls" else "none" end' <<< "$INBOUND_JSON")
+  SNI=$(jq_exec -r '.tls.server_name // empty' <<< "$INBOUND_JSON")
+  SNI=${SNI:-$TLS_SERVER_FALLBACK}
+  PUBLIC_KEY=$(awk -F '"' '/public_key/{print $4; exit}' "$INBOUND_FILE" 2>/dev/null)
+  SHORT_ID=$(jq_exec -r '.tls.reality.short_id[0] // ""' <<< "$INBOUND_JSON")
+  SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
+  PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
+  HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
+
+  case "$USER_TYPE" in
+    vless )
+      [ -z "$USER_UUID" ] && return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg flow "$USER_FLOW" --arg security "$SECURITY" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg pbk "$PUBLIC_KEY" --arg sid "$SHORT_ID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" --arg service "$SERVICE_NAME" '
+        {type:"vless", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid}
+        + (if $flow != "" then {flow:$flow} else {} end)
+        + (if $security == "reality" then {tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}, reality:{enabled:true, public_key:$pbk, short_id:$sid}}}
+           elif $security == "tls" then {tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
+           else {} end)
+        + (if $transport == "ws" then {transport:{type:"ws", path:$path, headers:{Host:$host}, max_early_data:2560, early_data_header_name:"Sec-WebSocket-Protocol"}}
+           elif $transport == "grpc" then {transport:{type:"grpc", service_name:$service}}
+           elif $transport == "http" then {transport:{type:"http"}}
+           else {} end)
+        + (if $flow == "xtls-rprx-vision" then {multiplex:{enabled:false, protocol:"h2mux", max_connections:8, min_streams:16, padding:false, brutal:{enabled:false, up_mbps:1000, down_mbps:1000}}} else {} end)
+      '
+      ;;
+    vmess )
+      [ -z "$USER_UUID" ] && return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" '
+        {type:"vmess", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid, security:"auto"}
+        + (if $transport == "ws" then {transport:{type:"ws", path:$path, headers:{Host:$host}}} else {} end)
+      '
+      ;;
+    hysteria2|hysteria )
+      [ -z "$USER_PASSWORD" ] && return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg cert "$CERT_BASE64" '
+        {type:"hysteria2", tag:$tag, server:$server, server_port:($port|tonumber), up_mbps:200, down_mbps:1000, password:$password, tls:{enabled:true, server_name:$sni, alpn:["h3"]}}
+        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+      '
+      ;;
+    tuic )
+      [ -z "$USER_UUID" ] || [ -z "$USER_PASSWORD" ] && return 1
+      CC=$(jq_exec -r '.congestion_control // "bbr"' <<< "$INBOUND_JSON")
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg password "$USER_PASSWORD" --arg cc "$CC" --arg sni "$SNI" --arg cert "$CERT_BASE64" '
+        {type:"tuic", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid, password:$password, congestion_control:$cc, udp_relay_mode:"native", zero_rtt_handshake:false, heartbeat:"10s", tls:{enabled:true, server_name:$sni, alpn:["h3"]}}
+        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+      '
+      ;;
+    trojan )
+      [ -z "$USER_PASSWORD" ] && return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg cert "$CERT_BASE64" '
+        {type:"trojan", tag:$tag, server:$server, server_port:($port|tonumber), password:$password, tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
+        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+      '
+      ;;
+    anytls )
+      [ -z "$USER_PASSWORD" ] && return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg cert "$CERT_BASE64" '
+        {type:"anytls", tag:$tag, server:$server, server_port:($port|tonumber), password:$password, idle_session_check_interval:"30s", idle_session_timeout:"30s", min_idle_session:5, tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
+        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+      '
+      ;;
+    * )
+      return 2
+      ;;
+  esac
+}
+
 extended_user_subscription() {
   check_install
   [ "${STATUS[0]}" = "$(text 26)" ] && error "\n Sing-box $(text 26) "
@@ -4937,9 +5029,6 @@ extended_user_subscription() {
   [ -z "$EXT_API_KEY" ] && error "\n $(text 193) $(text 38) \n"
 
   local TARGET_USERNAME="$1"
-  if [ -z "$TARGET_USERNAME" ] && [ "$2" != 'noninteractive' ]; then
-    reading "\n $(text 196) " TARGET_USERNAME
-  fi
 
   local API_HOST="$EXT_MANAGER_LISTEN"
   case "$API_HOST" in
@@ -4949,6 +5038,19 @@ extended_user_subscription() {
   local BASE_URL="http://${API_HOST}:${EXT_MANAGER_API_PORT}/manager/v1"
   local USERS_JSON="${TEMP_DIR}/extended-users.json"
   wget --no-check-certificate -qO "$USERS_JSON" --header="Authorization: Bearer ${EXT_API_KEY}" "$BASE_URL/users" 2>/dev/null || error "\n $(text 191) $(text 38) \n"
+
+  if [ -z "$TARGET_USERNAME" ] && [ "$2" != 'noninteractive' ]; then
+    local USER_CHOICES
+    USER_CHOICES=$(jq_exec -r '(if type == "array" then .[] else .items[]? end) | .username // empty' "$USERS_JSON" | awk 'NF && !seen[$0]++')
+    if [ -n "$USER_CHOICES" ]; then
+      hint "\n Users:"
+      awk '{print " " NR ". " $0}' <<< "$USER_CHOICES"
+      reading "\n $(text 196) " TARGET_USERNAME
+      if [[ "$TARGET_USERNAME" =~ ^[0-9]+$ ]]; then
+        TARGET_USERNAME=$(awk -v n="$TARGET_USERNAME" 'NR==n{print; exit}' <<< "$USER_CHOICES")
+      fi
+    fi
+  fi
 
   local USERS_NDJSON="${TEMP_DIR}/extended-users.ndjson"
   jq_exec -c --arg username "$TARGET_USERNAME" '
@@ -4965,11 +5067,10 @@ extended_user_subscription() {
   local TLS_SERVER_CERT=""
   [ -s "${WORK_DIR}/cert/cert.pem" ] && TLS_SERVER_CERT=$(openssl x509 -noout -ext subjectAltName -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F 'DNS:' '/DNS:/{gsub(/,.*/, "", $2); print $2; exit}')
   [ -z "$TLS_SERVER_CERT" ] && [ -s "${WORK_DIR}/cert/cert.pem" ] && TLS_SERVER_CERT=$(openssl x509 -noout -subject -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | sed -n 's/.*CN *= *\([^,\/]*\).*/\1/p')
-  local CERT_SHA256="" CERT_BASE64=""
-  [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_SHA256=$(openssl x509 -fingerprint -noout -sha256 -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F '=' '{print $NF}')
+  local CERT_BASE64=""
   [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_BASE64=$(openssl x509 -in ${WORK_DIR}/cert/cert.pem -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | openssl enc -base64 2>/dev/null)
 
-  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG RAW_FILE SUB_FILE LINKS_FILE SKIPPED_FILE
+  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
   mkdir -p "$OUT_DIR"
   if [ -n "$TARGET_USERNAME" ]; then
     SLUG=$(sed 's#[/[:space:]]#_#g; s#[^[:alnum:]_.@-]#_#g' <<< "$TARGET_USERNAME")
@@ -4977,103 +5078,33 @@ extended_user_subscription() {
   else
     SLUG="all"
   fi
-  RAW_FILE="${OUT_DIR}/${SLUG}.txt"
-  SUB_FILE="${OUT_DIR}/${SLUG}"
-  LINKS_FILE="${TEMP_DIR}/extended-user-links.txt"
+  JSON_FILE="${OUT_DIR}/${SLUG}"
+  JSON_COPY_FILE="${OUT_DIR}/${SLUG}.json"
   SKIPPED_FILE="${TEMP_DIR}/extended-user-skipped.txt"
-  : > "$LINKS_FILE"
+  OUTBOUND_REPLACE=""
+  NODE_REPLACE=""
   rm -f "$SKIPPED_FILE"
 
-  local USER_JSON USERNAME INBOUND USER_TYPE USER_UUID USER_PASSWORD USER_SECRET USER_FLOW ALTER_ID
-  local INBOUND_JSON INBOUND_FILE IN_TYPE PORT TRANSPORT SECURITY SNI PUBLIC_KEY SHORT_ID SERVICE_NAME PATH_VALUE HOST_VALUE REMARK REMARK_ENC LINK
+  local USER_JSON USERNAME INBOUND USER_TYPE INBOUND_JSON INBOUND_FILE REMARK OUTBOUND_JSON
   while IFS= read -r USER_JSON; do
     USERNAME=$(jq_exec -r '.username // empty' <<< "$USER_JSON")
     INBOUND=$(jq_exec -r '.inbound // empty' <<< "$USER_JSON")
     USER_TYPE=$(jq_exec -r '.type // empty' <<< "$USER_JSON")
-    USER_UUID=$(jq_exec -r '.uuid // empty' <<< "$USER_JSON")
-    USER_PASSWORD=$(jq_exec -r '.password // empty' <<< "$USER_JSON")
-    USER_SECRET=$(jq_exec -r '.secret // empty' <<< "$USER_JSON")
-    USER_FLOW=$(jq_exec -r '.flow // empty' <<< "$USER_JSON")
-    ALTER_ID=$(jq_exec -r '.alter_id // 0' <<< "$USER_JSON")
     INBOUND_JSON=$(extended_inbound_json "$INBOUND") || { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: inbound not found" >> "$SKIPPED_FILE"; continue; }
     INBOUND_FILE=$(extended_inbound_file "$INBOUND")
-    [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
-
-    IN_TYPE=$(jq_exec -r '.type // empty' <<< "$INBOUND_JSON")
-    PORT=$(jq_exec -r '.listen_port // empty' <<< "$INBOUND_JSON")
-    TRANSPORT=$(jq_exec -r '.transport.type // "tcp"' <<< "$INBOUND_JSON")
-    SECURITY=$(jq_exec -r 'if .tls.reality.enabled == true then "reality" elif .tls.enabled == true then "tls" else "none" end' <<< "$INBOUND_JSON")
-    SNI=$(jq_exec -r '.tls.server_name // empty' <<< "$INBOUND_JSON")
-    SNI=${SNI:-$TLS_SERVER_CERT}
-    PUBLIC_KEY=$(awk -F '"' '/public_key/{print $4; exit}' "$INBOUND_FILE" 2>/dev/null)
-    SHORT_ID=$(jq_exec -r '.tls.reality.short_id[0] // ""' <<< "$INBOUND_JSON")
-    SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
-    PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
-    HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
     REMARK="${USERNAME} ${INBOUND}"
-    REMARK_ENC=$(url_encode "$REMARK")
-    LINK=""
 
-    case "$USER_TYPE" in
-      vless )
-        [ -z "$USER_UUID" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid" >> "$SKIPPED_FILE"; continue; }
-        local VLESS_Q="encryption=none"
-        if [ "$SECURITY" = 'reality' ]; then
-          VLESS_Q+="&security=reality&sni=$(url_encode "$SNI")&fp=${FINGER_PRINT:-chrome}&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}"
-        elif [ "$SECURITY" = 'tls' ]; then
-          VLESS_Q+="&security=tls&sni=$(url_encode "$SNI")"
-        else
-          VLESS_Q+="&security=none"
-        fi
-        case "$TRANSPORT" in
-          ws ) VLESS_Q+="&type=ws&host=$(url_encode "$HOST_VALUE")&path=$(url_encode "$PATH_VALUE")" ;;
-          grpc ) VLESS_Q+="&type=grpc&serviceName=$(url_encode "$SERVICE_NAME")&mode=gun" ;;
-          http ) VLESS_Q+="&type=http&path=$(url_encode "$PATH_VALUE")" ;;
-          * ) VLESS_Q+="&type=tcp" ;;
-        esac
-        [ -n "$USER_FLOW" ] && VLESS_Q+="&flow=${USER_FLOW}"
-        LINK="vless://${USER_UUID}@${SERVER_HOST}:${PORT}?${VLESS_Q}#${REMARK_ENC}"
-        ;;
-      vmess )
-        [ -z "$USER_UUID" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid" >> "$SKIPPED_FILE"; continue; }
-        local VMESS_NET="$TRANSPORT" VMESS_TLS=""
-        [ "$SECURITY" = 'tls' ] && VMESS_TLS="tls"
-        [ "$SECURITY" = 'reality' ] && VMESS_TLS="tls"
-        [ "$VMESS_NET" = 'tcp' ] && VMESS_NET="tcp"
-        LINK="vmess://$(jq_exec -cn --arg ps "$REMARK" --arg add "${SERVER_IP}" --arg port "$PORT" --arg id "$USER_UUID" --arg aid "${ALTER_ID:-0}" --arg net "$VMESS_NET" --arg host "$HOST_VALUE" --arg path "$PATH_VALUE" --arg tls "$VMESS_TLS" --arg sni "$SNI" '{v:"2",ps:$ps,add:$add,port:$port,id:$id,aid:$aid,scy:"auto",net:$net,type:"",host:$host,path:$path,tls:$tls,sni:$sni,alpn:""}' | base64 -w0)"
-        ;;
-      hysteria2|hysteria )
-        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
-        LINK="hysteria2://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?sni=$(url_encode "$SNI")&insecure=0#${REMARK_ENC}"
-        ;;
-      tuic )
-        [ -z "$USER_UUID" ] || [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing uuid/password" >> "$SKIPPED_FILE"; continue; }
-        local CC=$(jq_exec -r '.congestion_control // "bbr"' <<< "$INBOUND_JSON")
-        LINK="tuic://${USER_PASSWORD}:${USER_UUID}@${SERVER_HOST}:${PORT}?congestion_control=${CC}&udp_relay_mode=native&alpn=h3&sni=$(url_encode "$SNI")&allow_insecure=0#${REMARK_ENC}"
-        ;;
-      trojan )
-        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
-        LINK="trojan://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?security=tls&sni=$(url_encode "$SNI")&allowInsecure=0#${REMARK_ENC}"
-        ;;
-      anytls )
-        [ -z "$USER_PASSWORD" ] && { echo "${USERNAME}/${INBOUND}/${USER_TYPE}: missing password" >> "$SKIPPED_FILE"; continue; }
-        LINK="anytls://${USER_PASSWORD}@${SERVER_HOST}:${PORT}?security=tls&sni=$(url_encode "$SNI")&insecure=0#${REMARK_ENC}"
-        ;;
-      http|mixed|naive|socks|trusttunnel|mtproxy|ssh )
-        echo "${USERNAME}/${INBOUND}/${USER_TYPE}: URI export not supported" >> "$SKIPPED_FILE"
-        continue
-        ;;
-      * )
-        echo "${USERNAME}/${INBOUND}/${USER_TYPE}: unknown type" >> "$SKIPPED_FILE"
-        continue
-        ;;
-    esac
-    [ -n "$LINK" ] && echo "$LINK" >> "$LINKS_FILE"
+    OUTBOUND_JSON=$(extended_user_sing_box_outbound "$USER_JSON" "$INBOUND_JSON" "$INBOUND_FILE" "$REMARK" "$TLS_SERVER_CERT" "$CERT_BASE64") || {
+      echo "${USERNAME}/${INBOUND}/${USER_TYPE}: sing-box export not supported or missing fields" >> "$SKIPPED_FILE"
+      continue
+    }
+    OUTBOUND_REPLACE+=" ${OUTBOUND_JSON},"
+    NODE_REPLACE+="\"${REMARK}\","
   done < "$USERS_NDJSON"
 
-  [ -s "$LINKS_FILE" ] || error "\n $(text 197) \n$(cat "$SKIPPED_FILE")\n"
-  cp -f "$LINKS_FILE" "$RAW_FILE"
-  base64 -w0 "$LINKS_FILE" > "$SUB_FILE"
+  [ -n "$OUTBOUND_REPLACE" ] || error "\n $(text 197) \n$(cat "$SKIPPED_FILE" 2>/dev/null)\n"
+  render_sing_box_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "$JSON_FILE" || error "\n Sing-box $(text 80) $(text 38) \n"
+  cp -f "$JSON_FILE" "$JSON_COPY_FILE"
 
   local SUBSCRIBE_ADDRESS=""
   if [ -n "$PORT_NGINX" ] && [ -n "$UUID_CONFIRM" ] && [ "$IS_SUB" = 'is_sub' ]; then
@@ -5081,12 +5112,18 @@ extended_user_subscription() {
   fi
 
   info "\n $(text 198):"
-  hint " $RAW_FILE"
-  hint " $SUB_FILE"
+  hint " $JSON_FILE"
+  hint " $JSON_COPY_FILE"
   if [ -n "$SUBSCRIBE_ADDRESS" ]; then
-    info "\n $(text 80):"
-    hint " ${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}"
-    hint " ${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.txt"
+    local EXT_SUB_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}"
+    local EXT_SUB_JSON_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.json"
+    info "\n SFI / SFA / SFM $(text 80):"
+    hint " $EXT_SUB_URL"
+    hint " $EXT_SUB_JSON_URL"
+    if [ -x "${WORK_DIR}/qrencode" ]; then
+      info "\n $(text 80) QRcode:"
+      hint " $(${WORK_DIR}/qrencode "$EXT_SUB_URL")"
+    fi
   fi
   if [ -s "$SKIPPED_FILE" ]; then
     warning "\n $(text 199):"
@@ -5132,14 +5169,13 @@ install_sing-box() {
   hint "\n $(text 2) " && wait
   sing-box_json
   echo "${L^^}" > ${WORK_DIR}/language
-  cp $TEMP_DIR/sing-box $TEMP_DIR/jq ${WORK_DIR}
+  install -m 755 "$TEMP_DIR/sing-box" "$SING_BOX_BIN"
+  cp "$TEMP_DIR/jq" ${WORK_DIR}
   [ -x $TEMP_DIR/qrencode ] && cp $TEMP_DIR/qrencode ${WORK_DIR}
-
-  # 生成 sing-box systemd 配置文件
+  [ -x $TEMP_DIR/cloudflared ] && install -m 755 "$TEMP_DIR/cloudflared" "$CLOUDFLARED_BIN"
   sing-box_systemd
 
-  # 生成 Argo systemd 配置文件，并复制 cloudflared 可执行二进制文件
-  cp $TEMP_DIR/cloudflared ${WORK_DIR}
+  # 生成 Argo systemd 配置文件
   [ -n "$ARGO_RUNS" ] && argo_systemd
 
   # 如果是 Json Argo，把配置文件复制到工作目录
@@ -5149,7 +5185,7 @@ install_sing-box() {
   [ -n "$PORT_NGINX" ] && export_nginx_conf_file
 
   # 系统启动 sing-box 服务
-  cmd_systemctl enable sing-box
+  cmd_systemctl enable "$SING_BOX_SERVICE_NAME"
 
   # 等待服务启动
   sleep 2
@@ -5158,31 +5194,31 @@ install_sing-box() {
   sync_firewall_rules
 
   # 检查服务是否成功启动
-  if cmd_systemctl status sing-box &>/dev/null; then
+  if cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null; then
     STATUS[0]=$(text 28)
     info "\n Sing-box $(text 28) $(text 37) \n"
   else
     STATUS[0]=$(text 27)
     error "\n Sing-box $(text 27) $(text 38) \n"
     # 如果启动失败，再尝试重启
-    cmd_systemctl restart sing-box
+    cmd_systemctl restart "$SING_BOX_SERVICE_NAME"
   fi
 
   # 如果配置了 Argo，也启动 Argo 服务
   if [ -s ${ARGO_DAEMON_FILE} ]; then
-    cmd_systemctl enable argo
+    cmd_systemctl enable "$ARGO_SERVICE_NAME"
 
     sleep 2
 
     # 检查 Argo 服务是否成功启动
-    if cmd_systemctl status argo &>/dev/null; then
+    if cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null; then
       STATUS[1]=$(text 28)
       info "\n Argo $(text 28) $(text 37) \n"
     else
       STATUS[1]=$(text 27)
       error "\n Argo $(text 27) $(text 38) \n"
       # 如果启动失败，再尝试重启
-      cmd_systemctl restart argo
+      cmd_systemctl restart "$ARGO_SERVICE_NAME"
     fi
   fi
 }
@@ -5765,8 +5801,7 @@ naive+quic://${UUID[22]}:${UUID[22]}@${SERVER_IP_1}:${PORT_NAIVE}?congestion_con
 
   {
     # 生成 sing-box SFM SFA SFI 订阅文件
-    [ ! -s "$TEMP_DIR/sing-box-template" ] && wget --no-check-certificate --continue -qO "$TEMP_DIR/sing-box-template" "${GH_PROXY}${SUBSCRIBE_TEMPLATE}/sing-box" 2>/dev/null
-    cat $TEMP_DIR/sing-box-template | sed "s#\"<OUTBOUND_REPLACE>\",#$OUTBOUND_REPLACE#; s#\"<NODE_REPLACE>\"#${NODE_REPLACE%,}#g" | ${WORK_DIR}/jq > ${WORK_DIR}/subscribe/sing-box
+    render_sing_box_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "${WORK_DIR}/subscribe/sing-box"
     rm -f $TEMP_DIR/sing-box-template
   } &>/dev/null
 
@@ -5940,8 +5975,8 @@ fi
 bash "\$SCRIPT" \$@
 EOF
   chmod +x ${WORK_DIR}/sing-box.sh ${WORK_DIR}/sb.sh
-  ln -sf ${WORK_DIR}/sb.sh /usr/bin/sb
-  [ -s /usr/bin/sb ] && info "\n $(text 71) "
+  ln -sf ${WORK_DIR}/sb.sh "$SHORTCUT_PATH"
+  [ -s "$SHORTCUT_PATH" ] && info "\n $(text 71) "
 }
 
 # 增加或删除协议
@@ -6293,10 +6328,10 @@ change_protocols() {
   if ls ${WORK_DIR}/conf/*-ws*inbounds.json >/dev/null 2>&1; then
     if [[ "$ARGO_OR_ORIGIN_RULES" != '2' && "$ARGO_ORIGIN_RULES_STATUS" != 'is_origin' && ! -s ${ARGO_DAEMON_FILE} ]]; then
       argo_systemd
-      cmd_systemctl enable argo >/dev/null 2>&1
+      cmd_systemctl enable "$ARGO_SERVICE_NAME" >/dev/null 2>&1
     fi
   elif [ -s ${ARGO_DAEMON_FILE} ]; then
-    cmd_systemctl disable argo >/dev/null 2>&1
+    cmd_systemctl disable "$ARGO_SERVICE_NAME" >/dev/null 2>&1
     rm -f ${ARGO_DAEMON_FILE}
     [ -s ${WORK_DIR}/tunnel.json ] && rm -f ${WORK_DIR}/tunnel.*
   fi
@@ -6305,7 +6340,7 @@ change_protocols() {
   ! ls ${ARGO_DAEMON_FILE} >/dev/null 2>&1 && [[ -s ${WORK_DIR}/nginx.conf && "$IS_SUB" = 'no_sub' ]] && IS_ARGO=no_argo && rm -f ${WORK_DIR}/nginx.conf
 
   # 热更 sing-box（SIGHUP 重新加载配置，PID 不变）
-  cmd_systemctl reload sing-box
+  cmd_systemctl reload "$SING_BOX_SERVICE_NAME"
 
   # 打开防火墙相关端口
   sync_firewall_rules
@@ -6323,14 +6358,14 @@ change_protocols() {
 # 卸载 sing-box 全家桶
 uninstall() {
   if [ -d ${WORK_DIR} ]; then
-    [ -s ${ARGO_DAEMON_FILE} ] && cmd_systemctl disable argo &>/dev/null
-    [ -s ${SINGBOX_DAEMON_FILE} ] && cmd_systemctl disable sing-box &>/dev/null
+    [ -s ${ARGO_DAEMON_FILE} ] && cmd_systemctl disable "$ARGO_SERVICE_NAME" &>/dev/null
+    [ -s ${SINGBOX_DAEMON_FILE} ] && cmd_systemctl disable "$SING_BOX_SERVICE_NAME" &>/dev/null
     sleep 1
     [[ -s ${WORK_DIR}/nginx.conf && "$(ps -ef | grep -c '[n]ginx')" = 0 ]] && reading "\n $(text 83) " REMOVE_NGINX
     [ "${REMOVE_NGINX,,}" = 'y' ] && ${PACKAGE_UNINSTALL[int]} nginx >/dev/null 2>&1
     purge_service_firewall_rules
     del_port_hopping_nat >/dev/null 2>&1 || true
-    rm -rf ${WORK_DIR} ${TEMP_DIR} ${ARGO_DAEMON_FILE} ${SINGBOX_DAEMON_FILE} /usr/bin/sb
+    rm -rf ${WORK_DIR} ${TEMP_DIR} ${ARGO_DAEMON_FILE} ${SINGBOX_DAEMON_FILE} "$SHORTCUT_PATH"
     info "\n $(text 16) \n"
   else
     error "\n $(text 15) \n"
@@ -6344,7 +6379,7 @@ version() {
   local ONLINE=$(get_sing_box_version)
 
   grep -q '.' <<< "$ONLINE" || error " $(text 100) \n"
-  local LOCAL=$(${WORK_DIR}/sing-box version | awk '/version/{print $NF}')
+  local LOCAL=$("$SING_BOX_BIN" version | awk '/version/{print $NF}')
   info "\n $(text 40) "
   [[ -n "$ONLINE" && "$ONLINE" != "$LOCAL" ]] && reading "\n $(text 9) " UPDATE || info " $(text 41) "
 
@@ -6376,31 +6411,31 @@ version() {
       fi
     fi
 
-    cmd_systemctl disable sing-box
+    cmd_systemctl disable "$SING_BOX_SERVICE_NAME"
 
     # 备份旧版本
-    cp ${WORK_DIR}/sing-box ${WORK_DIR}/sing-box.bak
+    cp "$SING_BOX_BIN" ${WORK_DIR}/${BIN_NAME}.bak
     hint "\n $(text 102) \n"
 
     # 安装新版本
-    chmod +x $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box && mv $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box ${WORK_DIR}/sing-box
-    cmd_systemctl enable sing-box
+    chmod +x $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box && mv $TEMP_DIR/sing-box-$ONLINE-linux-$SING_BOX_ARCH/sing-box "$SING_BOX_BIN"
+    cmd_systemctl enable "$SING_BOX_SERVICE_NAME"
     sleep 2
 
     # 检查新版本是否成功运行
-    if cmd_systemctl status sing-box &>/dev/null; then
+    if cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null; then
       # 新版本运行成功，删除备份
-      rm -f ${WORK_DIR}/sing-box.bak ${WORK_DIR}/conf/*.bak
+      rm -f ${WORK_DIR}/${BIN_NAME}.bak ${WORK_DIR}/conf/*.bak
       info "\n $(text 103) \n"
     else
       # 新版本运行失败，恢复旧版本
       warning "\n $(text 104) \n"
-      mv ${WORK_DIR}/sing-box.bak ${WORK_DIR}/sing-box
+      mv ${WORK_DIR}/${BIN_NAME}.bak "$SING_BOX_BIN"
       rm -f ${WORK_DIR}/conf/*.bak
-      cmd_systemctl enable sing-box
+      cmd_systemctl enable "$SING_BOX_SERVICE_NAME"
       sleep 2
 
-      cmd_systemctl status sing-box &>/dev/null && info "\n $(text 105) \n" || error "\n $(text 106) \n"
+      cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && info "\n $(text 105) \n" || error "\n $(text 106) \n"
     fi
   fi
 }
@@ -6409,8 +6444,8 @@ version() {
 menu_setting() {
   if [[ "${STATUS[0]}" =~ $(text 27)|$(text 28) ]]; then
     OPTION[1]="1 .  $(text 29)"
-    [ "${STATUS[0]}" = "$(text 28)" ] && OPTION[2]="2 .  $(text 27) Sing-box (sb -s)" || OPTION[2]="2 .  $(text 28) Sing-box (sb -s)"
-    [ "${STATUS[1]}" = "$(text 28)" ] && OPTION[3]="3 .  $(text 27) Argo (sb -a)" || OPTION[3]="3 .  $(text 28) Argo (sb -a)"
+    [ "${STATUS[0]}" = "$(text 28)" ] && OPTION[2]="2 .  $(text 27) Sing-box (${SHORTCUT_NAME} -s)" || OPTION[2]="2 .  $(text 28) Sing-box (${SHORTCUT_NAME} -s)"
+    [ "${STATUS[1]}" = "$(text 28)" ] && OPTION[3]="3 .  $(text 27) Argo (${SHORTCUT_NAME} -a)" || OPTION[3]="3 .  $(text 28) Argo (${SHORTCUT_NAME} -a)"
     OPTION[4]="4 .  $(text 92)"
     OPTION[5]="5 .  $(text 121)"
     OPTION[6]="6 .  $(text 31)"
@@ -6426,24 +6461,24 @@ menu_setting() {
 
     [ "${STATUS[0]}" = "$(text 28)" ] &&
     ACTION[2]() {
-      cmd_systemctl disable sing-box
-      cmd_systemctl status sing-box &>/dev/null && error " Sing-box $(text 27) $(text 38) " || info " Sing-box $(text 27) $(text 37)"
+      cmd_systemctl disable "$SING_BOX_SERVICE_NAME"
+      cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && error " Sing-box $(text 27) $(text 38) " || info " Sing-box $(text 27) $(text 37)"
     } ||
     ACTION[2]() {
-      cmd_systemctl enable sing-box
+      cmd_systemctl enable "$SING_BOX_SERVICE_NAME"
       sleep 2
-      cmd_systemctl status sing-box &>/dev/null && info " Sing-box $(text 28) $(text 37)" || error " Sing-box $(text 28) $(text 38) "
+      cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && info " Sing-box $(text 28) $(text 37)" || error " Sing-box $(text 28) $(text 38) "
     }
 
     [ "${STATUS[1]}" = "$(text 28)" ] &&
     ACTION[3]() {
-      cmd_systemctl disable argo
-      cmd_systemctl status argo &>/dev/null && error " Argo $(text 27) $(text 38) " || info " Argo $(text 27) $(text 37)"
+      cmd_systemctl disable "$ARGO_SERVICE_NAME"
+      cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && error " Argo $(text 27) $(text 38) " || info " Argo $(text 27) $(text 37)"
     } ||
     ACTION[3]() {
-      cmd_systemctl enable argo
+      cmd_systemctl enable "$ARGO_SERVICE_NAME"
       sleep 2
-      cmd_systemctl status argo &>/dev/null &&  info " Argo $(text 28) $(text 37)" || error " Argo $(text 28) $(text 38) "
+      cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null &&  info " Argo $(text 28) $(text 37)" || error " Argo $(text 28) $(text 38) "
       grep -qs '\--url' ${ARGO_DAEMON_FILE} && fetch_quicktunnel_domain && export_list
     }
 
@@ -6521,7 +6556,7 @@ statistics_of_run_times update sing-box.sh 2>/dev/null
 if [ -s $WORK_DIR/nginx.conf ] && grep -q 'Neko|Throne' $WORK_DIR/nginx.conf; then
   sed -i 's@~\*Neko|Throne.*@~*Throne|Neko              /throne;         # 匹配 Throne / Neko 客户端@g' "$WORK_DIR/nginx.conf"
   [ -s $WORK_DIR/subscribe/neko ] && rm -f $WORK_DIR/subscribe/neko
-  cmd_systemctl restart sing-box
+  cmd_systemctl restart "$SING_BOX_SERVICE_NAME"
   export_list >/dev/null 2>&1
 fi
 
@@ -6584,12 +6619,12 @@ for z in ${!ALL_PARAMETER[@]}; do
       if [ "${STATUS[0]}" = "$(text 26)" ]; then
         error "\n Sing-box $(text 26) "
       elif [ "${STATUS[0]}" = "$(text 28)" ]; then
-        cmd_systemctl disable sing-box
-        cmd_systemctl status sing-box &>/dev/null && error " Sing-box $(text 27) $(text 38) " || info "\n Sing-box $(text 27) $(text 37)"
+        cmd_systemctl disable "$SING_BOX_SERVICE_NAME"
+        cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && error " Sing-box $(text 27) $(text 38) " || info "\n Sing-box $(text 27) $(text 37)"
       elif [ "${STATUS[0]}" = "$(text 27)" ]; then
-        cmd_systemctl enable sing-box
+        cmd_systemctl enable "$SING_BOX_SERVICE_NAME"
         sleep 2
-        cmd_systemctl status sing-box &>/dev/null && info "\n Sing-box $(text 28) $(text 37)" || error "\n Sing-box $(text 28) $(text 38)"
+        cmd_systemctl status "$SING_BOX_SERVICE_NAME" &>/dev/null && info "\n Sing-box $(text 28) $(text 37)" || error "\n Sing-box $(text 28) $(text 38)"
       fi
       exit 0
       ;;
@@ -6598,12 +6633,12 @@ for z in ${!ALL_PARAMETER[@]}; do
       if [ "${STATUS[1]}" = "$(text 26)" ]; then
         error "\n Argo $(text 26) "
       elif [ "${STATUS[1]}" = "$(text 28)" ]; then
-        cmd_systemctl disable argo
-        cmd_systemctl status argo &>/dev/null && error " Argo $(text 27) $(text 38) " || info "\n Argo $(text 27) $(text 37)"
+        cmd_systemctl disable "$ARGO_SERVICE_NAME"
+        cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && error " Argo $(text 27) $(text 38) " || info "\n Argo $(text 27) $(text 37)"
       elif [ "${STATUS[1]}" = "$(text 27)" ]; then
-        cmd_systemctl enable argo
+        cmd_systemctl enable "$ARGO_SERVICE_NAME"
         sleep 2
-        cmd_systemctl status argo &>/dev/null && info "\n Argo $(text 28) $(text 37)" || error "\n Argo $(text 28) $(text 38) "
+        cmd_systemctl status "$ARGO_SERVICE_NAME" &>/dev/null && info "\n Argo $(text 28) $(text 37)" || error "\n Argo $(text 28) $(text 38) "
         grep -qs '\--url' ${ARGO_DAEMON_FILE} && fetch_quicktunnel_domain && export_list
       fi
       exit 0

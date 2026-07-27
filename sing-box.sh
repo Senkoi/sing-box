@@ -5298,8 +5298,12 @@ extended_user_subscription() {
       hint " $EXT_SUB_SHADOWROCKET_TXT_URL"
     fi
     if [ -x "${WORK_DIR}/qrencode" ]; then
-      info "\n $(text 80) QRcode:"
+      info "\n SFI / SFA / SFM $(text 80) QRcode:"
       hint " $(${WORK_DIR}/qrencode "$EXT_SUB_URL")"
+      if [ -s "$SHADOWROCKET_FILE" ]; then
+        info "\n Shadowrocket $(text 80) QRcode:"
+        hint " $(${WORK_DIR}/qrencode "$EXT_SUB_SHADOWROCKET_URL")"
+      fi
     fi
   fi
   if [ -s "$SKIPPED_FILE" ]; then

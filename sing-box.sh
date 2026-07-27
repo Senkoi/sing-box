@@ -5066,6 +5066,101 @@ extended_user_uri_link() {
   printf 'vless://%s@%s:%s?%s#%s\n' "$USER_UUID" "$SERVER_HOST" "$PORT" "$QUERY" "$REMARK_ENC"
 }
 
+extended_user_shadowrocket_link() {
+  local USER_JSON="$1" INBOUND_JSON="$2" INBOUND_FILE="$3" REMARK="$4" TLS_SERVER_FALLBACK="$5" CERT_SHA256="$6"
+  local USER_TYPE USER_UUID USER_PASSWORD USER_FLOW ALTER_ID PORT TRANSPORT SECURITY SNI PUBLIC_KEY SERVICE_NAME PATH_VALUE HOST_VALUE CC HOST_B64 HOST_URL REMARK_ENC PARAMS
+
+  USER_TYPE=$(jq_exec -r '.type // empty' <<< "$USER_JSON")
+  USER_UUID=$(jq_exec -r '.uuid // empty' <<< "$USER_JSON")
+  USER_PASSWORD=$(jq_exec -r '.password // empty' <<< "$USER_JSON")
+  USER_FLOW=$(jq_exec -r '.flow // empty' <<< "$USER_JSON")
+  ALTER_ID=$(jq_exec -r '.alter_id // 0' <<< "$USER_JSON")
+  PORT=$(jq_exec -r '.listen_port // empty' <<< "$INBOUND_JSON")
+  TRANSPORT=$(jq_exec -r '.transport.type // "tcp"' <<< "$INBOUND_JSON")
+  SECURITY=$(jq_exec -r 'if .tls.reality.enabled == true then "reality" elif .tls.enabled == true then "tls" else "none" end' <<< "$INBOUND_JSON")
+  SNI=$(jq_exec -r '.tls.server_name // empty' <<< "$INBOUND_JSON")
+  SNI=${SNI:-$TLS_SERVER_FALLBACK}
+  PUBLIC_KEY=$(awk -F '"' '/public_key/{print $4; exit}' "$INBOUND_FILE" 2>/dev/null)
+  SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
+  PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
+  HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
+
+  if [[ "$SERVER_IP" =~ : ]]; then
+    HOST_B64="[[$SERVER_IP]]"
+    HOST_URL="[$SERVER_IP]"
+  else
+    HOST_B64="$SERVER_IP"
+    HOST_URL="$SERVER_IP"
+  fi
+  REMARK_ENC=$(url_encode "$REMARK")
+
+  case "$USER_TYPE" in
+    vless )
+      [ -z "$USER_UUID" ] && return 1
+      PARAMS="remarks=${REMARK_ENC}"
+      if [ "$SECURITY" = 'reality' ] || [ "$SECURITY" = 'tls' ]; then
+        PARAMS+="&tls=1"
+        [ -n "$SNI" ] && PARAMS+="&peer=$(url_encode "$SNI")"
+      fi
+      [ "$USER_FLOW" = 'xtls-rprx-vision' ] && PARAMS+="&xtls=2" || PARAMS+="&mux=1"
+      [ "$SECURITY" = 'reality' ] && [ -n "$PUBLIC_KEY" ] && PARAMS+="&pbk=$(url_encode "$PUBLIC_KEY")"
+      case "$TRANSPORT" in
+        ws )
+          PARAMS+="&obfs=websocket"
+          [ -n "$HOST_VALUE" ] && PARAMS+="&obfsParam=$(url_encode "$HOST_VALUE")"
+          PARAMS+="&path=$(url_encode "$PATH_VALUE")"
+          ;;
+        grpc )
+          PARAMS+="&obfs=grpc"
+          [ -n "$SERVICE_NAME" ] && PARAMS+="&path=$(url_encode "$SERVICE_NAME")"
+          ;;
+        http )
+          PARAMS+="&obfs=h2&path=$(url_encode "$PATH_VALUE")&alpn=h2"
+          ;;
+      esac
+      printf 'vless://%s?%s\n' "$(echo -n "auto:${USER_UUID}@${HOST_B64}:${PORT}" | base64 -w0)" "$PARAMS"
+      ;;
+    vmess )
+      [ -z "$USER_UUID" ] && return 1
+      PARAMS="remarks=${REMARK_ENC}&alterId=${ALTER_ID}"
+      if [ "$TRANSPORT" = 'ws' ]; then
+        PARAMS+="&obfs=websocket&path=$(url_encode "$PATH_VALUE")"
+        [ -n "$HOST_VALUE" ] && PARAMS+="&obfsParam=$(url_encode "$HOST_VALUE")"
+      fi
+      printf 'vmess://%s?%s\n' "$(echo -n "auto:${USER_UUID}@${HOST_B64}:${PORT}" | base64 -w0)" "$PARAMS"
+      ;;
+    hysteria2|hysteria )
+      [ -z "$USER_PASSWORD" ] && return 1
+      PARAMS="peer=$(url_encode "$SNI")&obfs=none"
+      [ -n "$CERT_SHA256" ] && PARAMS+="&hpkp=${CERT_SHA256}"
+      printf 'hysteria2://%s@%s:%s?%s#%s\n' "$USER_PASSWORD" "$HOST_URL" "$PORT" "$PARAMS" "$REMARK_ENC"
+      ;;
+    tuic )
+      [ -z "$USER_UUID" ] || [ -z "$USER_PASSWORD" ] && return 1
+      CC=$(jq_exec -r '.congestion_control // "bbr"' <<< "$INBOUND_JSON")
+      PARAMS="peer=$(url_encode "$SNI")&congestion_control=${CC}&udp_relay_mode=native&alpn=h3"
+      [ -n "$CERT_SHA256" ] && PARAMS+="&hpkp=${CERT_SHA256}"
+      printf 'tuic://%s:%s@%s:%s?%s#%s\n' "$USER_PASSWORD" "$USER_UUID" "$HOST_B64" "$PORT" "$PARAMS" "$REMARK_ENC"
+      ;;
+    trojan )
+      [ -z "$USER_PASSWORD" ] && return 1
+      PARAMS="peer=$(url_encode "$SNI")"
+      [ -n "$CERT_SHA256" ] && PARAMS+="&hpkp=${CERT_SHA256}"
+      printf 'trojan://%s@%s:%s?%s#%s\n' "$USER_PASSWORD" "$HOST_URL" "$PORT" "$PARAMS" "$REMARK_ENC"
+      ;;
+    anytls )
+      [ -z "$USER_PASSWORD" ] && return 1
+      PARAMS="peer=$(url_encode "$SNI")&udp=1"
+      [ -n "$CERT_SHA256" ] && PARAMS+="&hpkp=${CERT_SHA256}"
+      printf 'anytls://%s@%s:%s?%s#%s\n' "$USER_PASSWORD" "$HOST_URL" "$PORT" "$PARAMS" "$REMARK_ENC"
+      ;;
+    * )
+      return 2
+      ;;
+  esac
+}
+
 extended_user_subscription() {
   check_install
   [ "${STATUS[0]}" = "$(text 26)" ] && error "\n Sing-box $(text 26) "
@@ -5119,8 +5214,10 @@ extended_user_subscription() {
   [ -z "$TLS_SERVER_CERT" ] && [ -s "${WORK_DIR}/cert/cert.pem" ] && TLS_SERVER_CERT=$(openssl x509 -noout -subject -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | sed -n 's/.*CN *= *\([^,\/]*\).*/\1/p')
   local CERT_BASE64=""
   [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_BASE64=$(openssl x509 -in ${WORK_DIR}/cert/cert.pem -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform der 2>/dev/null | openssl dgst -sha256 -binary 2>/dev/null | openssl enc -base64 2>/dev/null)
+  local CERT_SHA256=""
+  [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_SHA256=$(openssl x509 -fingerprint -noout -sha256 -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F '=' '{print $NF}')
 
-  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE URI_FILE URI_SUB_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
+  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE URI_FILE URI_SUB_FILE SHADOWROCKET_FILE SHADOWROCKET_SUB_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
   mkdir -p "$OUT_DIR"
   if [ -n "$TARGET_USERNAME" ]; then
     SLUG=$(sed 's#[/[:space:]]#_#g; s#[^[:alnum:]_.@-]#_#g' <<< "$TARGET_USERNAME")
@@ -5132,10 +5229,12 @@ extended_user_subscription() {
   JSON_COPY_FILE="${OUT_DIR}/${SLUG}.json"
   URI_FILE="${OUT_DIR}/${SLUG}.txt"
   URI_SUB_FILE="${OUT_DIR}/${SLUG}.uri"
+  SHADOWROCKET_FILE="${OUT_DIR}/${SLUG}.shadowrocket.txt"
+  SHADOWROCKET_SUB_FILE="${OUT_DIR}/${SLUG}.shadowrocket"
   SKIPPED_FILE="${TEMP_DIR}/extended-user-skipped.txt"
   OUTBOUND_REPLACE=""
   NODE_REPLACE=""
-  rm -f "$SKIPPED_FILE" "$URI_FILE" "$URI_SUB_FILE"
+  rm -f "$SKIPPED_FILE" "$URI_FILE" "$URI_SUB_FILE" "$SHADOWROCKET_FILE" "$SHADOWROCKET_SUB_FILE"
 
   local USER_JSON USERNAME INBOUND USER_TYPE INBOUND_JSON INBOUND_FILE REMARK OUTBOUND_JSON
   while IFS= read -r USER_JSON; do
@@ -5153,12 +5252,14 @@ extended_user_subscription() {
     OUTBOUND_REPLACE+=" ${OUTBOUND_JSON},"
     NODE_REPLACE+="\"${REMARK}\","
     extended_user_uri_link "$USER_JSON" "$INBOUND_JSON" "$INBOUND_FILE" "$REMARK" "$TLS_SERVER_CERT" >> "$URI_FILE" || true
+    extended_user_shadowrocket_link "$USER_JSON" "$INBOUND_JSON" "$INBOUND_FILE" "$REMARK" "$TLS_SERVER_CERT" "$CERT_SHA256" >> "$SHADOWROCKET_FILE" || true
   done < "$USERS_NDJSON"
 
   [ -n "$OUTBOUND_REPLACE" ] || error "\n $(text 197) \n$(cat "$SKIPPED_FILE" 2>/dev/null)\n"
   render_sing_box_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "$JSON_FILE" || error "\n Sing-box $(text 80) $(text 38) \n"
   cp -f "$JSON_FILE" "$JSON_COPY_FILE"
   [ -s "$URI_FILE" ] && base64 -w0 "$URI_FILE" > "$URI_SUB_FILE"
+  [ -s "$SHADOWROCKET_FILE" ] && base64 -w0 "$SHADOWROCKET_FILE" > "$SHADOWROCKET_SUB_FILE"
 
   local SUBSCRIBE_ADDRESS=""
   if [ -n "$PORT_NGINX" ] && [ -n "$UUID_CONFIRM" ] && [ "$IS_SUB" = 'is_sub' ]; then
@@ -5172,11 +5273,17 @@ extended_user_subscription() {
     hint " $URI_FILE"
     hint " $URI_SUB_FILE"
   fi
+  if [ -s "$SHADOWROCKET_FILE" ]; then
+    hint " $SHADOWROCKET_FILE"
+    hint " $SHADOWROCKET_SUB_FILE"
+  fi
   if [ -n "$SUBSCRIBE_ADDRESS" ]; then
     local EXT_SUB_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}"
     local EXT_SUB_JSON_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.json"
     local EXT_SUB_TXT_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.txt"
     local EXT_SUB_URI_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.uri"
+    local EXT_SUB_SHADOWROCKET_TXT_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.shadowrocket.txt"
+    local EXT_SUB_SHADOWROCKET_URL="${SUBSCRIBE_ADDRESS}/${UUID_CONFIRM}/ext/${SLUG}.shadowrocket"
     info "\n SFI / SFA / SFM $(text 80):"
     hint " $EXT_SUB_URL"
     hint " $EXT_SUB_JSON_URL"
@@ -5184,6 +5291,11 @@ extended_user_subscription() {
       info "\n VLESS URI $(text 80):"
       hint " $EXT_SUB_TXT_URL"
       hint " $EXT_SUB_URI_URL"
+    fi
+    if [ -s "$SHADOWROCKET_FILE" ]; then
+      info "\n Shadowrocket $(text 80):"
+      hint " $EXT_SUB_SHADOWROCKET_URL"
+      hint " $EXT_SUB_SHADOWROCKET_TXT_URL"
     fi
     if [ -x "${WORK_DIR}/qrencode" ]; then
       info "\n $(text 80) QRcode:"

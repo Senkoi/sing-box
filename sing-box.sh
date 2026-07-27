@@ -5217,7 +5217,7 @@ extended_user_subscription() {
   local CERT_SHA256=""
   [ -s "${WORK_DIR}/cert/cert.pem" ] && CERT_SHA256=$(openssl x509 -fingerprint -noout -sha256 -in ${WORK_DIR}/cert/cert.pem 2>/dev/null | awk -F '=' '{print $NF}')
 
-  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE URI_FILE URI_SUB_FILE SHADOWROCKET_FILE SHADOWROCKET_SUB_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
+  local OUT_DIR="${WORK_DIR}/subscribe/ext" SLUG JSON_FILE JSON_COPY_FILE URI_FILE URI_SUB_FILE SHADOWROCKET_FILE SHADOWROCKET_SUB_FILE SHADOWROCKET_QR_FILE SKIPPED_FILE OUTBOUND_REPLACE NODE_REPLACE
   mkdir -p "$OUT_DIR"
   if [ -n "$TARGET_USERNAME" ]; then
     SLUG=$(sed 's#[/[:space:]]#_#g; s#[^[:alnum:]_.@-]#_#g' <<< "$TARGET_USERNAME")
@@ -5231,10 +5231,11 @@ extended_user_subscription() {
   URI_SUB_FILE="${OUT_DIR}/${SLUG}.uri"
   SHADOWROCKET_FILE="${OUT_DIR}/${SLUG}.shadowrocket.txt"
   SHADOWROCKET_SUB_FILE="${OUT_DIR}/${SLUG}.shadowrocket"
+  SHADOWROCKET_QR_FILE="${OUT_DIR}/${SLUG}.shadowrocket.qr"
   SKIPPED_FILE="${TEMP_DIR}/extended-user-skipped.txt"
   OUTBOUND_REPLACE=""
   NODE_REPLACE=""
-  rm -f "$SKIPPED_FILE" "$URI_FILE" "$URI_SUB_FILE" "$SHADOWROCKET_FILE" "$SHADOWROCKET_SUB_FILE"
+  rm -f "$SKIPPED_FILE" "$URI_FILE" "$URI_SUB_FILE" "$SHADOWROCKET_FILE" "$SHADOWROCKET_SUB_FILE" "$SHADOWROCKET_QR_FILE"
 
   local USER_JSON USERNAME INBOUND USER_TYPE INBOUND_JSON INBOUND_FILE REMARK OUTBOUND_JSON
   while IFS= read -r USER_JSON; do
@@ -5297,12 +5298,28 @@ extended_user_subscription() {
       hint " $EXT_SUB_SHADOWROCKET_URL"
       hint " $EXT_SUB_SHADOWROCKET_TXT_URL"
     fi
+    if [ -s "$SHADOWROCKET_FILE" ]; then
+      cat > "$SHADOWROCKET_QR_FILE" << EOF
+Shadowrocket $(text 80):
+$EXT_SUB_SHADOWROCKET_URL
+
+Shadowrocket $(text 80) QRcode:
+https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=$EXT_SUB_SHADOWROCKET_URL
+EOF
+      [ -x "${WORK_DIR}/qrencode" ] && cat >> "$SHADOWROCKET_QR_FILE" << EOF
+
+$(${WORK_DIR}/qrencode "$EXT_SUB_SHADOWROCKET_URL")
+EOF
+      info "\n Shadowrocket $(text 80) QRcode:"
+      hint " https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=$EXT_SUB_SHADOWROCKET_URL"
+      [ -x "${WORK_DIR}/qrencode" ] && hint " $(${WORK_DIR}/qrencode "$EXT_SUB_SHADOWROCKET_URL")"
+      hint " $SHADOWROCKET_QR_FILE"
+    fi
     if [ -x "${WORK_DIR}/qrencode" ]; then
       info "\n SFI / SFA / SFM $(text 80) QRcode:"
       hint " $(${WORK_DIR}/qrencode "$EXT_SUB_URL")"
       if [ -s "$SHADOWROCKET_FILE" ]; then
-        info "\n Shadowrocket $(text 80) QRcode:"
-        hint " $(${WORK_DIR}/qrencode "$EXT_SUB_SHADOWROCKET_URL")"
+        :
       fi
     fi
   fi

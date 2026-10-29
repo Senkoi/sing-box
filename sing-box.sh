@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # 当前脚本版本号
-VERSION='v1.3.28 (2026.10.26)'
+VERSION='v1.3.28-ext.1 (2026.10.29)'
 
 # Github 反代加速代理
 GITHUB_PROXY=('https://ghproxy.lvedong.eu.org/' 'https://accel.cloudflare.nyc.mn/')
@@ -494,6 +494,50 @@ E[218]="Extended sing-box user subscription generated"
 C[218]="Extended 用户 sing-box 订阅已生成"
 E[219]="Unsupported Extended user/protocol skipped"
 C[219]="已跳过不支持的 Extended 用户/协议"
+E[220]="Create user and subscription in one step"
+C[220]="一键开通用户并生成订阅"
+E[221]="Username (letters, digits, . _ @ -, up to 64 characters):"
+C[221]="用户名（字母、数字、. _ @ -，最多 64 字符）："
+E[222]="Choose installed protocols (e.g. bcgl; Enter = all supported):"
+C[222]="选择已安装协议（如 bcgl，回车为全部支持的协议）："
+E[223]="Shared total traffic quota in GB (0 = unlimited, default 0):"
+C[223]="所有协议共享的总流量配额 GB（0 为不限，默认 0）："
+E[224]="Shared bandwidth limit in Mbps (0 = unlimited, default 0):"
+C[224]="所有协议共享的限速 Mbps（0 为不限，默认 0）："
+E[225]="Shared concurrent connection limit (0 = unlimited, default 0):"
+C[225]="所有协议共享的并发连接数（0 为不限，默认 0）："
+E[226]="Enable the local Extended manager and node first in the Extended settings menu."
+C[226]="请先在 Extended 设置中启用同机管理端和节点端。"
+E[227]="No matching installed and managed protocol. Shadowsocks and ShadowTLS cannot be managed."
+C[227]="没有对应的已安装可托管协议；Shadowsocks 和 ShadowTLS 不支持托管。"
+E[228]="Invalid username, protocol selection or limit."
+C[228]="用户名、协议选择或限额格式不正确。"
+E[229]="Initializing the node and creating the shared user policies..."
+C[229]="正在初始化节点并创建用户的共享管控策略……"
+E[230]="User provisioned. All selected protocols share the same quota and limits."
+C[230]="用户已开通，所选协议共享同一份配额和限额。"
+E[231]="Manager API request failed:"
+C[231]="管理 API 请求失败："
+E[232]="Rollback incomplete. Recovery resource list saved under:"
+C[232]="回滚未完成，待清理的资源清单保存在："
+E[233]="This username or its policies already exist; existing credentials and usage were preserved."
+C[233]="该用户名或其策略已经存在，已保留原有凭据和流量记录。"
+E[234]="Node did not connect to the manager in time; check its address, port and API key."
+C[234]="节点未能及时连接管理端，请检查地址、端口和 API Key。"
+E[235]="Another user provisioning command is running, or accounts/.lock needs recovery."
+C[235]="另一个开通命令正在运行，或 accounts/.lock 需要清理。"
+E[236]="Existing account: exporting again without changing credentials, limits or traffic usage."
+C[236]="账户已存在：仅重新导出，不修改凭据、限额或已用流量。"
+E[237]="Subscriptions are disabled: local files were exported. Enable subscriptions in sb -d and export again for a subscription QR code."
+C[237]="订阅未开启：已导出本地文件；在 sb -d 开启订阅后重新导出即可获得订阅二维码。"
+E[238]="Cannot determine the advertised server address; set --SERVER_IP before --EXT_ADD."
+C[238]="无法确定客户端使用的服务器地址，请在 --EXT_ADD 前设置 --SERVER_IP。"
+E[239]="Building the managed-user core fixes for first use. This needs git, Node.js/npm, network access and build space; it may take several minutes."
+C[239]="首次使用正在构建用户管控修复内核，需要 git、Node.js/npm、网络及构建空间，可能耗时数分钟。"
+E[240]="Managed-user core build failed; no new users were created."
+C[240]="用户管控修复内核构建失败，尚未创建新用户。"
+E[241]="Keeping the managed-user core to preserve protocol authentication and shared quotas. Rebuild tools/build-managed-core.sh when upgrading these fixes."
+C[241]="保留用户管控修复内核，以保证协议认证和共享配额；更新修复版本时请使用 tools/build-managed-core.sh 重新构建。"
 
 # 自定义字体彩色，read 函数
 warning() { echo -e "\033[31m\033[01m$*\033[0m"; }  # 红色
@@ -841,7 +885,10 @@ change_config() {
   EXT_MANAGER_STATUS=$([ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && text 28 || text 27)
   EXT_NODE_STATUS=$([ "$IS_EXT_NODE" = 'is_ext_node' ] && text 28 || text 27)
   MENU_IDX+=(198) && MENU_KEY+=(extended) && MENU_VAL+=("${EXT_MANAGER_STATUS}/${EXT_NODE_STATUS}")
-  [ "$IS_EXT_MANAGER" = 'is_ext_manager' ] && MENU_IDX+=(215) && MENU_KEY+=(extsub) && MENU_VAL+=("")
+  if [ "$IS_EXT_MANAGER" = 'is_ext_manager' ]; then
+    MENU_IDX+=(220) && MENU_KEY+=(extadd) && MENU_VAL+=("")
+    MENU_IDX+=(215) && MENU_KEY+=(extsub) && MENU_VAL+=("")
+  fi
   # 订阅开关（基于 nginx.conf 文件内容检测）
   if [ -s "${WORK_DIR}/nginx.conf" ] && \
      grep -qE 'location ~ \^/[^/]+/auto \{' "${WORK_DIR}/nginx.conf" 2>/dev/null; then
@@ -1116,6 +1163,9 @@ change_config() {
     return
   elif [ "$KEY" = "extended" ]; then
     extended_settings_menu
+    return
+  elif [ "$KEY" = "extadd" ]; then
+    extended_user_add
     return
   elif [ "$KEY" = "extsub" ]; then
     extended_user_subscription
@@ -1778,7 +1828,7 @@ extended_services_json() {
             \"tag\":\"my-node\",
             \"uuid\":\"${EXT_NODE_UUID}\",
             \"manager\":\"node-manager\",
-            \"inbounds\":[${EXT_NODE_INBOUNDS_JSON:-$(extended_node_inbounds_json)}],
+            \"inbounds\":[$(extended_node_inbounds_json)],
             \"connection_limiters\":[\"connection-limiter\"],
             \"bandwidth_limiters\":[\"bandwidth-limiter\"],
             \"traffic_limiters\":[\"traffic-limiter\"],
@@ -1797,35 +1847,22 @@ extended_services_json() {
   [ -n "$SERVICES" ] && printf '    "services":[%s\n    ]' "$SERVICES"
 }
 
+extended_managed_inbounds_json() {
+  local FILE FILES=()
+  for FILE in "${WORK_DIR}"/conf/*_inbounds.json; do
+    [ -s "$FILE" ] && FILES+=("$FILE")
+  done
+  [ "${#FILES[@]}" -gt 0 ] || { printf '[]\n'; return; }
+  # Unsupported node managers fail at runtime, not during `sing-box check`.
+  sed '/^[[:space:]]*\/\//d' "${FILES[@]}" | jq_exec -cs '
+    [.[].inbounds[]? | select(.type as $type |
+      ["anytls","http","hysteria","hysteria2","mixed","mtproxy","naive",
+       "socks","ssh","trojan","trusttunnel","tuic","vless","vmess"] | index($type))]
+    | unique_by(.tag)'
+}
+
 extended_node_inbounds_json() {
-  local TAGS=() FILE TAG CHECK_PROTOCOLS
-  for FILE in ${WORK_DIR}/conf/*_inbounds.json; do
-    [ -s "$FILE" ] || continue
-    while IFS= read -r TAG; do
-      [ -n "$TAG" ] && [ "$TAG" != 'shadowtls-in' ] && TAGS+=("$TAG")
-    done < <(jq_exec -r '.inbounds[]?.tag // empty' "$FILE" 2>/dev/null || awk 'match($0, /"tag"[[:space:]]*:[[:space:]]*"[^"]+"/){v=substr($0,RSTART,RLENGTH); sub(/.*"tag"[[:space:]]*:[[:space:]]*"/,"",v); sub(/".*/,"",v); print v}' "$FILE")
-  done
-
-  if [ "${#TAGS[@]}" -eq 0 ] && [ "${#INSTALL_PROTOCOLS[@]}" -gt 0 ]; then
-    for CHECK_PROTOCOLS in "${INSTALL_PROTOCOLS[@]}"; do
-      [ "$CHECK_PROTOCOLS" = 'a' ] && continue
-      TAG="${NODE_NAME_CONFIRM:-sing-box} ${NODE_TAG[$(( $(asc "$CHECK_PROTOCOLS") - 98 ))]}"
-      [ -n "$TAG" ] && TAGS+=("$TAG")
-    done
-  fi
-
-  if [ "${#TAGS[@]}" -eq 0 ]; then
-    printf '"vless-in"'
-    return
-  fi
-
-  local OUT='' T
-  for T in "${TAGS[@]}"; do
-    T=${T//\\/\\\\}
-    T=${T//\"/\\\"}
-    OUT+="\"${T}\","
-  done
-  printf '%s' "${OUT%,}"
+  extended_managed_inbounds_json | jq_exec -r 'map(.tag | tojson) | join(",")'
 }
 
 write_extended_services_conf() {
@@ -1853,13 +1890,17 @@ remove_extended_node_limiters() {
   fi
   if [ -s "$ROUTE_FILE" ]; then
     TMP_FILE="${ROUTE_FILE}.tmp"
-    jq_exec 'if .route.final == "traffic-limiter" then .route.final = "direct" else . end' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
+    jq_exec '
+      .route.rules = [(.route.rules // [])[] | select(.outbound != "traffic-limiter")] |
+      if .route.final == "traffic-limiter" then .route.final = "direct" else . end
+    ' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
   fi
 }
 
 write_extended_node_outbounds() {
   [ "$IS_EXT_NODE" = 'is_ext_node' ] || return
-  local OUT_FILE="${WORK_DIR}/conf/01_outbounds.json" TMP_FILE="${OUT_FILE}.tmp"
+  local OUT_FILE="${WORK_DIR}/conf/01_outbounds.json" TMP_FILE
+  TMP_FILE="${OUT_FILE}.tmp"
   [ -s "$OUT_FILE" ] || return
   jq_exec '
     .outbounds |= ((map(select(.tag as $t | ["bandwidth-limiter","rate-limiter","connection-limiter","traffic-limiter"] | index($t) | not))) + [
@@ -1873,9 +1914,17 @@ write_extended_node_outbounds() {
 
 write_extended_node_route() {
   [ "$IS_EXT_NODE" = 'is_ext_node' ] || return
-  local ROUTE_FILE="${WORK_DIR}/conf/03_route.json" TMP_FILE="${ROUTE_FILE}.tmp"
+  local ROUTE_FILE="${WORK_DIR}/conf/03_route.json" TMP_FILE
+  TMP_FILE="${ROUTE_FILE}.tmp"
   [ -s "$ROUTE_FILE" ] || return
-  jq_exec '.route.final = "traffic-limiter"' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
+  local TAGS
+  TAGS=$(extended_managed_inbounds_json | jq_exec -c 'map(.tag)') || return 1
+  jq_exec --argjson tags "$TAGS" '
+    .route.rules = ([if ($tags | length) > 0 then
+      {inbound:$tags, action:"route", outbound:"traffic-limiter"} else empty end] +
+      [(.route.rules // [])[] | select(.outbound != "traffic-limiter")]) |
+    if .route.final == "traffic-limiter" then .route.final = "direct" else . end
+  ' "$ROUTE_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$ROUTE_FILE"
 }
 
 fetch_extended_settings() {
@@ -3725,8 +3774,8 @@ check_dependencies() {
   fi
 
   # 2. 基础通用依赖（不含防火墙，防火墙仅端口跳跃时按需安装）
-  DEPS_CHECK+=("wget" "tar" "ss"  "ip"        "bash" "openssl" "ping")
-  DEPS_INSTALL+=("wget" "tar" "iproute2" "iproute2" "bash" "openssl" "iputils-ping")
+  DEPS_CHECK+=("wget" "curl" "tar" "ss"  "ip"        "bash" "openssl" "ping")
+  DEPS_INSTALL+=("wget" "curl" "tar" "iproute2" "iproute2" "bash" "openssl" "iputils-ping")
 
   [ "$SYSTEM" != 'Alpine' ] && DEPS_CHECK+=("systemctl") && DEPS_INSTALL+=("systemctl")
 
@@ -5830,6 +5879,27 @@ render_sing_box_subscription() {
   ' > "$OUT_FILE"
 }
 
+render_extended_user_subscription() {
+  local OUTBOUND_REPLACE="$1" NODE_REPLACE="$2" OUT_FILE="$3" INPUT
+  INPUT=$(mktemp "$TEMP_DIR/extended-profile.XXXXXX") || return 1
+  chmod 600 "$INPUT"
+  printf '{"outbounds":[%s],"nodes":[%s]}\n' "${OUTBOUND_REPLACE%,}" "${NODE_REPLACE%,}" > "$INPUT"
+  # A self-contained typed-DNS profile works with the pinned 1.13 core and
+  # does not depend on a moving remote template or deprecated block servers.
+  jq_exec '
+    {log:{level:"warn"},dns:{servers:[{type:"local",tag:"local"}],final:"local"},
+     inbounds:[{type:"tun",tag:"tun-in",address:["172.19.0.1/30"],auto_route:true,strict_route:true},
+               {type:"mixed",tag:"mixed-in",listen:"127.0.0.1",listen_port:2080}],
+     outbounds:([{type:"selector",tag:"proxy",outbounds:.nodes,default:.nodes[0]}] +
+       .outbounds + [{type:"direct",tag:"direct"}]),
+     route:{auto_detect_interface:true,default_domain_resolver:"local",final:"proxy",
+       rules:[{action:"sniff"},{protocol:"dns",action:"hijack-dns"}]}}
+  ' "$INPUT" > "$OUT_FILE"
+  local STATUS=$?
+  rm -f "$INPUT"
+  return "$STATUS"
+}
+
 extended_user_sing_box_outbound() {
   local USER_JSON="$1" INBOUND_JSON="$2" INBOUND_FILE="$3" REMARK="$4" TLS_SERVER_FALLBACK="$5" CERT_BASE64="$6"
   local USER_TYPE USER_UUID USER_PASSWORD USER_FLOW ALTER_ID IN_TYPE PORT TRANSPORT SECURITY SNI PUBLIC_KEY SHORT_ID SERVICE_NAME PATH_VALUE HOST_VALUE CC
@@ -5851,16 +5921,19 @@ extended_user_sing_box_outbound() {
   SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
   PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
   HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  HOST_VALUE=${HOST_VALUE:-$SERVER_IP}
+  [[ "$HOST_VALUE" != *:* || "$HOST_VALUE" = \[*\] ]] || HOST_VALUE="[$HOST_VALUE]"
   [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
 
   case "$USER_TYPE" in
     vless )
       [ -z "$USER_UUID" ] && return 1
-      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg flow "$USER_FLOW" --arg security "$SECURITY" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg pbk "$PUBLIC_KEY" --arg sid "$SHORT_ID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" --arg service "$SERVICE_NAME" '
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg flow "$USER_FLOW" --arg security "$SECURITY" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg pbk "$PUBLIC_KEY" --arg sid "$SHORT_ID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" --arg service "$SERVICE_NAME" --arg cert "$CERT_BASE64" '
         {type:"vless", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid}
         + (if $flow != "" then {flow:$flow} else {} end)
         + (if $security == "reality" then {tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}, reality:{enabled:true, public_key:$pbk, short_id:$sid}}}
-           elif $security == "tls" then {tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
+           elif $security == "tls" then {tls:({enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}
+             + (if $cert != "" then {certificate_public_key_sha256:[$cert]} else {} end))}
            else {} end)
         + (if $transport == "ws" then {transport:{type:"ws", path:$path, headers:{Host:$host}, max_early_data:2560, early_data_header_name:"Sec-WebSocket-Protocol"}}
            elif $transport == "grpc" then {transport:{type:"grpc", service_name:$service}}
@@ -5871,8 +5944,8 @@ extended_user_sing_box_outbound() {
       ;;
     vmess )
       [ -z "$USER_UUID" ] && return 1
-      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" '
-        {type:"vmess", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid, security:"auto"}
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg transport "$TRANSPORT" --arg path "$PATH_VALUE" --arg host "$HOST_VALUE" --argjson alter "$ALTER_ID" '
+        {type:"vmess", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid, alter_id:$alter, security:"auto"}
         + (if $transport == "ws" then {transport:{type:"ws", path:$path, headers:{Host:$host}}} else {} end)
       '
       ;;
@@ -5880,7 +5953,7 @@ extended_user_sing_box_outbound() {
       [ -z "$USER_PASSWORD" ] && return 1
       jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg cert "$CERT_BASE64" '
         {type:"hysteria2", tag:$tag, server:$server, server_port:($port|tonumber), up_mbps:200, down_mbps:1000, password:$password, tls:{enabled:true, server_name:$sni, alpn:["h3"]}}
-        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+        | if $cert != "" then .tls.certificate_public_key_sha256 = [$cert] else . end
       '
       ;;
     tuic )
@@ -5888,22 +5961,33 @@ extended_user_sing_box_outbound() {
       CC=$(jq_exec -r '.congestion_control // "bbr"' <<< "$INBOUND_JSON")
       jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg uuid "$USER_UUID" --arg password "$USER_PASSWORD" --arg cc "$CC" --arg sni "$SNI" --arg cert "$CERT_BASE64" '
         {type:"tuic", tag:$tag, server:$server, server_port:($port|tonumber), uuid:$uuid, password:$password, congestion_control:$cc, udp_relay_mode:"native", zero_rtt_handshake:false, heartbeat:"10s", tls:{enabled:true, server_name:$sni, alpn:["h3"]}}
-        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+        | if $cert != "" then .tls.certificate_public_key_sha256 = [$cert] else . end
       '
       ;;
     trojan )
       [ -z "$USER_PASSWORD" ] && return 1
       jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg cert "$CERT_BASE64" '
         {type:"trojan", tag:$tag, server:$server, server_port:($port|tonumber), password:$password, tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
-        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+        | if $cert != "" then .tls.certificate_public_key_sha256 = [$cert] else . end
       '
       ;;
     anytls )
       [ -z "$USER_PASSWORD" ] && return 1
       jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --arg port "$PORT" --arg password "$USER_PASSWORD" --arg sni "$SNI" --arg fp "${FINGER_PRINT:-chrome}" --arg cert "$CERT_BASE64" '
         {type:"anytls", tag:$tag, server:$server, server_port:($port|tonumber), password:$password, idle_session_check_interval:"30s", idle_session_timeout:"30s", min_idle_session:5, tls:{enabled:true, server_name:$sni, utls:{enabled:true, fingerprint:$fp}}}
-        + (if $cert != "" then {tls:(.tls + {certificate_public_key_sha256:[$cert]})} else {} end)
+        | if $cert != "" then .tls.certificate_public_key_sha256 = [$cert] else . end
       '
+      ;;
+    naive )
+      [ -n "$USER_PASSWORD" ] || return 1
+      local USER_NAME CERT_FILE
+      USER_NAME=$(jq_exec -r '.username' <<< "$USER_JSON")
+      CERT_FILE=$(jq_exec -r '.tls.certificate_path' <<< "$INBOUND_JSON")
+      [ -s "$CERT_FILE" ] || return 1
+      jq_exec -cn --arg tag "$REMARK" --arg server "$SERVER_IP" --argjson port "$PORT" --arg username "$USER_NAME" \
+        --arg password "$USER_PASSWORD" --arg sni "$SNI" --rawfile certificate "$CERT_FILE" '
+        {type:"naive",tag:$tag,server:$server,server_port:$port,username:$username,password:$password,
+         udp_over_tcp:true,quic:false,tls:{enabled:true,server_name:$sni,certificate:[$certificate]}}'
       ;;
     * )
       return 2
@@ -5931,6 +6015,8 @@ extended_user_uri_link() {
   SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
   PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
   HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  HOST_VALUE=${HOST_VALUE:-$SERVER_IP}
+  [[ "$HOST_VALUE" != *:* || "$HOST_VALUE" = \[*\] ]] || HOST_VALUE="[$HOST_VALUE]"
   [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
 
   QUERY="encryption=none&security=${SECURITY}"
@@ -5977,6 +6063,8 @@ extended_user_shadowrocket_link() {
   SERVICE_NAME=$(jq_exec -r '.transport.service_name // ""' <<< "$INBOUND_JSON")
   PATH_VALUE=$(jq_exec -r '.transport.path // "/"' <<< "$INBOUND_JSON")
   HOST_VALUE=$(jq_exec -r '.transport.headers.Host // .tls.server_name // empty' <<< "$INBOUND_JSON")
+  HOST_VALUE=${HOST_VALUE:-$SERVER_IP}
+  [[ "$HOST_VALUE" != *:* || "$HOST_VALUE" = \[*\] ]] || HOST_VALUE="[$HOST_VALUE]"
   [ -z "$USER_FLOW" ] && USER_FLOW=$(jq_exec -r '.users[0].flow // empty' <<< "$INBOUND_JSON")
 
   if [[ "$SERVER_IP" =~ : ]]; then
@@ -6048,16 +6136,342 @@ extended_user_shadowrocket_link() {
       [ -n "$CERT_SHA256" ] && PARAMS+="&hpkp=${CERT_SHA256}"
       printf 'anytls://%s@%s:%s?%s#%s\n' "$USER_PASSWORD" "$HOST_URL" "$PORT" "$PARAMS" "$REMARK_ENC"
       ;;
+    naive )
+      [ -n "$USER_PASSWORD" ] || return 1
+      local USER_NAME CERT_FILE CERT_PIN
+      USER_NAME=$(jq_exec -r '.username' <<< "$USER_JSON")
+      CERT_FILE=$(jq_exec -r '.tls.certificate_path' <<< "$INBOUND_JSON")
+      CERT_PIN=$(openssl x509 -fingerprint -noout -sha256 -in "$CERT_FILE" | awk -F '=' '{print $NF}') || return 1
+      printf 'http2://%s?peer=%s&alpn=h2,http/1.1&padding=1&uot=2&hpkp=%s#%s\n' \
+        "$(printf '%s:%s@%s:%s' "$USER_NAME" "$USER_PASSWORD" "$HOST_B64" "$PORT" | base64 -w0)" "$(url_encode "$SNI")" "$CERT_PIN" "$REMARK_ENC"
+      ;;
     * )
       return 2
       ;;
   esac
 }
 
+# Auth stays in an inherited descriptor, not command arguments or logs. Never
+# retry mutations automatically: a timed-out POST may already have committed.
+extended_api_request() {
+  local METHOD=$1 RESOURCE=$2 PAYLOAD=$3 RESPONSE=$4 HOST CODE
+  HOST=${EXT_MANAGER_LISTEN:-127.0.0.1}
+  case "$HOST" in 0.0.0.0|"") HOST=127.0.0.1 ;; ::|\[::\]) HOST='[::1]' ;; esac
+  [[ "$HOST" = *:* && "$HOST" != \[*\] ]] && HOST="[$HOST]"
+  local ARGS=(--silent --show-error --connect-timeout 3 --max-time 15 --noproxy '*' --proto '=http,https'
+    --request "$METHOD" --output "$RESPONSE" --write-out '%{http_code}')
+  [ -z "$PAYLOAD" ] || ARGS+=(--data-binary "@$PAYLOAD")
+  [[ "$EXT_API_KEY" != *$'\n'* && "$EXT_API_KEY" != *$'\r'* ]] || return 1
+  CODE=$(curl "${ARGS[@]}" --header @<(printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$EXT_API_KEY") \
+    "http://${HOST}:${EXT_MANAGER_API_PORT}/manager/v1${RESOURCE}") || return 1
+  if [[ ! "$CODE" =~ ^2[0-9][0-9]$ ]]; then
+    warning "$(text 231) HTTP $CODE: $METHOD ${RESOURCE%%\?*}" >&2
+    return 1
+  fi
+}
+
+extended_account_catalog() {
+  local INDEX FILE FILES LETTER
+  for INDEX in "${!NODE_TAG[@]}"; do
+    case "$INDEX" in 3|4) continue ;; esac
+    FILES=("${WORK_DIR}"/conf/*_"${NODE_TAG[INDEX]}"_inbounds.json)
+    FILE=${FILES[0]}
+    [ -s "$FILE" ] || continue
+    LETTER=$(asc "$((INDEX+98))")
+    sed '/^[[:space:]]*\/\//d' "$FILE" | jq_exec -c --arg letter "$LETTER" --arg label "${PROTOCOL_LIST[INDEX]}" \
+      '.inbounds[0] | {letter:$letter,label:$label,tag,type,flow:(.users[0].flow // "")}' || return 1
+  done
+}
+
+extended_account_build_core() {
+  [[ "$("$SING_BOX_BIN" version 2>/dev/null | awk '/version/{print $NF}')" = '1.13.14-extended-2.5.3-managed.1' ]] && return 0
+  info "$(text 239)"
+  local ROOT BASE
+  ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  if [ ! -s "$ROOT/tools/build-managed-core.sh" ] || [ ! -s "$ROOT/patches/extended-managed-users.patch" ]; then
+    ROOT="$ADD_TMP/builder"
+    BASE=${SCRIPT_REPO_URL%/sing-box.sh}
+    mkdir -p "$ROOT/tools" "$ROOT/patches" || return 1
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      "$BASE/tools/build-managed-core.sh" -o "$ROOT/tools/build-managed-core.sh" &&
+      curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        "$BASE/patches/extended-managed-users.patch" -o "$ROOT/patches/extended-managed-users.patch" || return 1
+  fi
+  # Downloaded helpers must match this script revision before executing them.
+  (cd "$ROOT" && printf '%s\n' \
+    '0fefaad1820e088a0ba14f684c14b9cb17835a8cfba37f94895b3d7112ccb854  tools/build-managed-core.sh' \
+    'b18a89420be91544146d7427c97775c3902190d7428331d525cfaf03270f0469  patches/extended-managed-users.patch' | sha256sum --check --status) || return 1
+  ADD_CORE_CANDIDATE="$ADD_TMP/sing-box-managed"
+  bash "$ROOT/tools/build-managed-core.sh" "$ADD_CORE_CANDIDATE" "$WORK_DIR/.managed-build" || {
+    warning "$(text 240)" >&2; return 1
+  }
+}
+
+extended_account_prepare_node() {
+  local BACKUP="$ADD_TMP/config-backup" FILE CHANGED=false RUNNING=false CHECK_BIN
+  extended_account_build_core || return 1
+  CHECK_BIN=${ADD_CORE_CANDIDATE:-$SING_BOX_BIN}
+  cmd_systemctl status "$SING_BOX_SERVICE_NAME" >/dev/null 2>&1 && RUNNING=true
+  mkdir -p "$BACKUP" || return 1
+  for FILE in 01_outbounds.json 03_route.json 08_services.json; do
+    cp -p "$WORK_DIR/conf/$FILE" "$BACKUP/$FILE" || return 1
+  done
+  write_extended_services_conf && write_extended_node_outbounds && write_extended_node_route &&
+    "$CHECK_BIN" check -C "$WORK_DIR/conf" || {
+      cp -p "$BACKUP/"* "$WORK_DIR/conf/"
+      return 1
+    }
+  for FILE in 01_outbounds.json 03_route.json 08_services.json; do
+    cmp -s "$BACKUP/$FILE" "$WORK_DIR/conf/$FILE" || CHANGED=true
+  done
+  if [ -n "$ADD_CORE_CANDIDATE" ]; then
+    cp -p "$SING_BOX_BIN" "$ADD_TMP/core-before" &&
+      install -m 755 "$ADD_CORE_CANDIDATE" "${SING_BOX_BIN}.managed-new" &&
+      mv -f "${SING_BOX_BIN}.managed-new" "$SING_BOX_BIN" || {
+        cp -p "$BACKUP/"* "$WORK_DIR/conf/"; return 1
+      }
+    ADD_CORE_REPLACED=true
+  fi
+  local RESULT=0
+  if ! $RUNNING; then
+    cmd_systemctl enable "$SING_BOX_SERVICE_NAME" || RESULT=1
+  elif [ "$ADD_CORE_REPLACED" = true ]; then
+    cmd_systemctl restart "$SING_BOX_SERVICE_NAME" || RESULT=1
+  elif $CHANGED; then
+    cmd_systemctl reload "$SING_BOX_SERVICE_NAME" || RESULT=1
+  fi
+  if [ "$RESULT" -eq 0 ]; then
+    local READY=false DEADLINE=$((SECONDS+10))
+    while [ "$SECONDS" -lt "$DEADLINE" ]; do
+      if cmd_systemctl status "$SING_BOX_SERVICE_NAME" >/dev/null 2>&1 &&
+          extended_api_request GET /version '' "$ADD_TMP/ready.json" >/dev/null 2>&1; then
+        READY=true; break
+      fi
+      sleep 0.2
+    done
+    $READY || RESULT=1
+  fi
+  if [ "$RESULT" -ne 0 ]; then
+    cp -p "$BACKUP/"* "$WORK_DIR/conf/"
+    if [ "$ADD_CORE_REPLACED" = true ]; then
+      cp -p "$ADD_TMP/core-before" "${SING_BOX_BIN}.managed-new" && mv -f "${SING_BOX_BIN}.managed-new" "$SING_BOX_BIN"
+    fi
+    $RUNNING && cmd_systemctl restart "$SING_BOX_SERVICE_NAME"
+    return 1
+  fi
+  if [ "$ADD_CORE_REPLACED" = true ]; then
+    cp -p "$ADD_TMP/core-before" "${SING_BOX_BIN}.pre-managed"
+  fi
+  return 0
+}
+
+extended_account_create() {
+  local RESOURCE=$1 PAYLOAD=$2 ID_KEY=${3:-id} ID
+  extended_api_request POST "$RESOURCE" "$PAYLOAD" "$ADD_TMP/response.json" || return 1
+  ID=$(jq_exec -er --arg key "$ID_KEY" '.[$key] | select(. != null)' "$ADD_TMP/response.json") || return 1
+  printf '%s/%s\n' "$RESOURCE" "$ID" >> "$ADD_TMP/created"
+}
+
+extended_account_cleanup() {
+  local STATUS=$? INDEX ITEMS=() FAILED=false
+  trap - EXIT INT TERM
+  if [ "$ADD_COMMITTED" != true ] && [ -f "$ADD_TMP/created" ]; then
+    mapfile -t ITEMS < "$ADD_TMP/created"
+    for ((INDEX=${#ITEMS[@]}-1; INDEX>=0; INDEX--)); do
+      extended_api_request DELETE "${ITEMS[INDEX]}" '' "$ADD_TMP/rollback.json" || FAILED=true
+    done
+    if $FAILED; then
+      cp "$ADD_TMP/created" "$WORK_DIR/accounts/recovery-$(date +%s)-$$.txt"
+      warning "$(text 232) $WORK_DIR/accounts/" >&2
+    fi
+  fi
+  rm -rf "$ADD_TMP"
+  rmdir "$WORK_DIR/accounts/.lock" 2>/dev/null || true
+  exit "$STATUS"
+}
+
+extended_account_bootstrap() {
+  local SQUAD_ID NODE_NAME
+  # Reuse an existing node's memberships without changing user-owned groups.
+  extended_api_request GET "/nodes?uuid=$EXT_NODE_UUID" '' "$ADD_TMP/nodes.json" || return 1
+  ADD_POLICY_SQUADS=$(jq_exec -c '.[0].squad_ids // []' "$ADD_TMP/nodes.json") || return 1
+  if [ "$ADD_POLICY_SQUADS" = '[]' ]; then
+    NODE_NAME="sb-$EXT_NODE_UUID"
+    extended_api_request GET "/squads?name=$NODE_NAME" '' "$ADD_TMP/squads.json" || return 1
+    SQUAD_ID=$(jq_exec -r '.[0].id // empty' "$ADD_TMP/squads.json")
+    if [ -z "$SQUAD_ID" ]; then
+      jq_exec -cn --arg name "$NODE_NAME" '{name:$name}' > "$ADD_TMP/payload.json" || return 1
+      extended_account_create /squads "$ADD_TMP/payload.json" || return 1
+      SQUAD_ID=$(jq_exec -r '.id' "$ADD_TMP/response.json")
+    fi
+    ADD_POLICY_SQUADS="[$SQUAD_ID]"
+    jq_exec -cn --arg uuid "$EXT_NODE_UUID" --arg name "$NODE_NAME" --argjson squads "$ADD_POLICY_SQUADS" \
+      '{uuid:$uuid,name:$name,squad_ids:$squads}' > "$ADD_TMP/payload.json" || return 1
+    extended_account_create /nodes "$ADD_TMP/payload.json" uuid || return 1
+  fi
+
+}
+
+extended_account_apply() {
+  local USERNAME=$1 QUOTA=$2 SPEED=$3 CONNECTIONS=$4 RESOURCE KIND PAYLOAD INBOUND TYPE TAG UUID PASSWORD FLOW
+  extended_account_bootstrap || return 1
+  # One strategy per logical username, shared by all protocol inbounds.
+  for KIND in traffic bandwidth connection rate; do
+    RESOURCE="/${KIND}-limiters"
+    extended_api_request GET "$RESOURCE?username=$USERNAME" '' "$ADD_TMP/existing.json" || return 1
+    [ "$(jq_exec 'length' "$ADD_TMP/existing.json")" = 0 ] || { warning "$(text 233)" >&2; return 1; }
+    jq_exec -cn --arg username "$USERNAME" --arg outbound "$KIND-limiter" --argjson squads "$ADD_POLICY_SQUADS" \
+      '{username:$username,outbound:$outbound,squad_ids:$squads,strategy:"bypass"}' > "$ADD_TMP/payload.json" || return 1
+    case "$KIND" in
+      traffic)
+        [ "$QUOTA" = 0 ] || jq_exec --arg quota "$(extended_limit_bytes "$QUOTA" 1000000000)B" '. + {strategy:"global",mode:"bidirectional",quota:$quota}' "$ADD_TMP/payload.json" > "$ADD_TMP/limited.json" || return 1 ;;
+      bandwidth)
+        [ "$SPEED" = 0 ] || jq_exec --arg speed "$(extended_limit_bytes "$SPEED" 125000)Bps" '. + {strategy:"global",mode:"bidirectional",speed:$speed}' "$ADD_TMP/payload.json" > "$ADD_TMP/limited.json" || return 1 ;;
+      connection)
+        [ "$CONNECTIONS" = 0 ] || jq_exec --argjson count "$CONNECTIONS" '. + {strategy:"connection",connection_type:"default",lock_type:"default",count:$count}' "$ADD_TMP/payload.json" > "$ADD_TMP/limited.json" || return 1 ;;
+
+    esac
+    PAYLOAD="$ADD_TMP/payload.json"
+    if [ -s "$ADD_TMP/limited.json" ]; then PAYLOAD="$ADD_TMP/limited.json"; fi
+    extended_account_create "$RESOURCE" "$PAYLOAD" || return 1
+    rm -f "$ADD_TMP/limited.json"
+  done
+  UUID=$("$SING_BOX_BIN" generate uuid) || return 1
+  PASSWORD=$(openssl rand -hex 16) || return 1
+  printf '[]\n' > "$ADD_TMP/users.json"
+  while IFS= read -r INBOUND; do
+    TYPE=$(jq_exec -r '.type' <<< "$INBOUND")
+    TAG=$(jq_exec -r '.tag' <<< "$INBOUND")
+    FLOW=$(jq_exec -r '.flow' <<< "$INBOUND")
+    jq_exec -cn --arg username "$USERNAME" --arg inbound "$TAG" --arg type "$TYPE" --arg uuid "$UUID" \
+      --arg password "$PASSWORD" --arg flow "$FLOW" --argjson squads "$ADD_POLICY_SQUADS" \
+      '{username:$username,inbound:$inbound,type:$type,uuid:$uuid,password:$password,flow:$flow,alter_id:0,squad_ids:$squads}' > "$ADD_TMP/payload.json" || return 1
+    extended_account_create /users "$ADD_TMP/payload.json" || return 1
+    jq_exec --slurpfile user "$ADD_TMP/response.json" '. + [$user[0] | {id,username,inbound,type}]' \
+      "$ADD_TMP/users.json" > "$ADD_TMP/users.tmp" && mv "$ADD_TMP/users.tmp" "$ADD_TMP/users.json" || return 1
+  done < <(jq_exec -c '.[]' "$ADD_TMP/selected.json")
+  local DEADLINE=$((SECONDS+20))
+  while [ "$SECONDS" -lt "$DEADLINE" ]; do
+    extended_api_request GET "/nodes/$EXT_NODE_UUID/status" '' "$ADD_TMP/status.json" || return 1
+    [ "$(jq_exec -r '.status' "$ADD_TMP/status.json")" != online ] || return 0
+    sleep 0.2
+  done
+  warning "$(text 234)" >&2
+  return 1
+}
+
+# The core's unit parser only accepts integers. Preserve up to three decimal
+# places without floating-point rounding or requiring a patched unit parser.
+extended_limit_bytes() {
+  local WHOLE=${1%%.*} FRACTION=0 SCALE=$2
+  [[ "$1" != *.* ]] || FRACTION=${1#*.}
+  FRACTION="${FRACTION}000"
+  FRACTION=${FRACTION:0:3}
+  printf '%s' "$((10#$WHOLE * SCALE + 10#$FRACTION * SCALE / 1000))"
+}
+
+extended_user_add() (
+  local USERNAME=${1:-} PROTOCOLS=${2:-a} QUOTA=${3:-0} SPEED=${4:-0} CONNECTIONS=${5:-0} MODE=${6:-interactive}
+  local ADD_TMP ADD_COMMITTED=false ADD_POLICY_SQUADS ADD_CORE_CANDIDATE='' ADD_CORE_REPLACED=false MANIFEST ITEM LETTER VALUE
+  command -v curl >/dev/null 2>&1 || { warning 'curl is required' >&2; return 1; }
+  fetch_extended_settings
+  normalize_extended_settings
+  if [[ "$IS_EXT_MANAGER" != is_ext_manager || "$IS_EXT_NODE" != is_ext_node ]]; then
+    warning "$(text 226)" >&2; return 1
+  fi
+  mkdir -p "$TEMP_DIR" "$WORK_DIR/accounts" || return 1
+  chmod 700 "$WORK_DIR/accounts"
+  umask 077
+  ADD_TMP=$(mktemp -d "$TEMP_DIR/extended-add.XXXXXX") || return 1
+  if ! mkdir "$WORK_DIR/accounts/.lock" 2>/dev/null; then
+    rm -rf "$ADD_TMP"; warning "$(text 235)" >&2; return 1
+  fi
+  trap extended_account_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  extended_account_catalog | jq_exec -s '.' > "$ADD_TMP/catalog.json" || return 1
+  [ "$(jq_exec 'length' "$ADD_TMP/catalog.json")" -gt 0 ] || { warning "$(text 227)" >&2; return 1; }
+  if [ "$MODE" = interactive ]; then
+    reading "$(text 221) " USERNAME
+    jq_exec -r '.[] | " \(.letter). \(.label)"' "$ADD_TMP/catalog.json"
+    reading "$(text 222) " PROTOCOLS; PROTOCOLS=${PROTOCOLS:-a}
+    reading "$(text 223) " QUOTA; QUOTA=${QUOTA:-0}
+    reading "$(text 224) " SPEED; SPEED=${SPEED:-0}
+    reading "$(text 225) " CONNECTIONS; CONNECTIONS=${CONNECTIONS:-0}
+  fi
+  [[ "$USERNAME" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}$ ]] || { warning "$(text 228)" >&2; return 1; }
+  for VALUE in "$QUOTA" "$SPEED"; do
+    [[ "$VALUE" =~ ^[0-9]{1,9}(\.[0-9]{1,3})?$ ]] || { warning "$(text 228)" >&2; return 1; }
+  done
+  [[ "$CONNECTIONS" =~ ^[0-9]{1,9}$ ]] || { warning "$(text 228)" >&2; return 1; }
+  QUOTA=$(jq_exec -n --arg n "$QUOTA" '$n|tonumber')
+  SPEED=$(jq_exec -n --arg n "$SPEED" '$n|tonumber')
+  CONNECTIONS=$(jq_exec -n --arg n "$CONNECTIONS" '$n|tonumber')
+  PROTOCOLS=${PROTOCOLS,,}
+  if [ "$PROTOCOLS" != a ]; then
+    [[ "$PROTOCOLS" =~ ^[b-m]+$ ]] || { warning "$(text 228)" >&2; return 1; }
+    for ((ITEM=0; ITEM<${#PROTOCOLS}; ITEM++)); do
+      LETTER=${PROTOCOLS:ITEM:1}
+      jq_exec -e --arg letter "$LETTER" 'any(.[]; .letter == $letter)' "$ADD_TMP/catalog.json" >/dev/null || { warning "$(text 227) $LETTER" >&2; return 1; }
+    done
+  fi
+  jq_exec --arg protocols "$PROTOCOLS" '[.[] | select(.letter as $letter | $protocols == "a" or ($protocols | contains($letter)))]' \
+    "$ADD_TMP/catalog.json" > "$ADD_TMP/selected.json" || return 1
+  MANIFEST="$WORK_DIR/accounts/$USERNAME.json"
+  local ADVERTISED_SERVER=${SERVER_IP:-}
+  fetch_nodes_value || :
+  SERVER_IP=${SERVER_IP:-$ADVERTISED_SERVER}
+  is_valid_server_addr "$SERVER_IP" || { warning "$(text 238)" >&2; return 1; }
+  if [ -s "$WORK_DIR/nginx.conf" ]; then
+    PORT_NGINX=$(awk '/listen[[:space:]]+[0-9]+/ {gsub(/;/,"",$2);print $2;exit}' "$WORK_DIR/nginx.conf")
+    grep -q 'location ~ .*auto' "$WORK_DIR/nginx.conf" && IS_SUB=is_sub
+  fi
+  extended_account_prepare_node || return 1
+  if [ -f "$MANIFEST" ]; then
+    # Re-running cannot rotate credentials, reset usage, or expand permissions.
+    jq_exec -e --arg node "$EXT_NODE_UUID" '.node_uuid == $node' "$MANIFEST" >/dev/null || return 1
+    ADD_COMMITTED=true
+    info "$(text 236)"
+    extended_user_subscription "$USERNAME" noninteractive prepared
+    return $?
+  fi
+  extended_api_request GET "/users?username=$USERNAME" '' "$ADD_TMP/existing.json" || return 1
+  [ "$(jq_exec 'length' "$ADD_TMP/existing.json")" = 0 ] || { warning "$(text 233)" >&2; return 1; }
+  info "$(text 229)"
+  extended_account_apply "$USERNAME" "$QUOTA" "$SPEED" "$CONNECTIONS" || return 1
+  jq_exec -n --arg username "$USERNAME" --arg node "$EXT_NODE_UUID" --argjson quota "$QUOTA" --argjson speed "$SPEED" \
+    --argjson connections "$CONNECTIONS" --slurpfile users "$ADD_TMP/users.json" \
+    '{username:$username,node_uuid:$node,quota_gb:$quota,speed_mbps:$speed,connections:$connections,users:$users[0]}' > "$ADD_TMP/account.json" || return 1
+  mv "$ADD_TMP/account.json" "$MANIFEST" || return 1
+  ADD_COMMITTED=true
+  info "$(text 230)"
+  extended_user_subscription "$USERNAME" noninteractive prepared
+)
+
+extended_user_add_cli() {
+  local USERNAME='' PROTOCOLS=a QUOTA=0 SPEED=0 CONNECTIONS=0 MODE=noninteractive
+  [ "$#" -gt 0 ] || { extended_user_add; return $?; }
+  if [[ "$1" != --* ]]; then USERNAME=$1; shift; fi
+  while [ "$#" -gt 0 ]; do
+    [ "$#" -ge 2 ] || { warning "$(text 228)" >&2; return 1; }
+    case "${1^^}" in
+      --EXT_PROTOCOLS) PROTOCOLS=$2 ;;
+      --EXT_QUOTA_GB) QUOTA=$2 ;;
+      --EXT_SPEED_MBPS) SPEED=$2 ;;
+      --EXT_CONNECTIONS) CONNECTIONS=$2 ;;
+      *) warning "$(text 228) $1" >&2; return 1 ;;
+    esac
+    shift 2
+  done
+  extended_user_add "$USERNAME" "$PROTOCOLS" "$QUOTA" "$SPEED" "$CONNECTIONS" "$MODE"
+}
+
 extended_user_subscription() {
-  check_install
+  if [ "$3" != prepared ]; then check_install; else STATUS[0]=$(text 28); fi
   [ "${STATUS[0]}" = "$(text 26)" ] && error "\n Sing-box $(text 26) "
-  fetch_nodes_value
+  local ADVERTISED_SERVER=${SERVER_IP:-}
+  fetch_nodes_value || :
+  SERVER_IP=${SERVER_IP:-$ADVERTISED_SERVER}
   fetch_extended_settings
   normalize_extended_settings
 
@@ -6068,14 +6482,10 @@ extended_user_subscription() {
 
   local TARGET_USERNAME="$1"
 
-  local API_HOST="$EXT_MANAGER_LISTEN"
-  case "$API_HOST" in
-    ""|0.0.0.0|::|\[::\] ) API_HOST="127.0.0.1" ;;
-  esac
-  [[ "$API_HOST" =~ : && ! "$API_HOST" =~ ^\[.*\]$ ]] && API_HOST="[$API_HOST]"
-  local BASE_URL="http://${API_HOST}:${EXT_MANAGER_API_PORT}/manager/v1"
   local USERS_JSON="${TEMP_DIR}/extended-users.json"
-  wget --no-check-certificate -qO "$USERS_JSON" --header="Authorization: Bearer ${EXT_API_KEY}" "$BASE_URL/users" 2>/dev/null || error "\n $(text 211) $(text 38) \n"
+  local USERS_RESOURCE='/users?limit=10000'
+  [ -z "$TARGET_USERNAME" ] || USERS_RESOURCE="/users?username=$(url_encode "$TARGET_USERNAME")&limit=10000"
+  extended_api_request GET "$USERS_RESOURCE" '' "$USERS_JSON" || error "\n $(text 211) $(text 38) \n"
 
   if [ -z "$TARGET_USERNAME" ] && [ "$2" != 'noninteractive' ]; then
     local USER_CHOICES
@@ -6150,10 +6560,17 @@ extended_user_subscription() {
   done < "$USERS_NDJSON"
 
   [ -n "$OUTBOUND_REPLACE" ] || error "\n $(text 217) \n$(cat "$SKIPPED_FILE" 2>/dev/null)\n"
-  render_sing_box_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "$JSON_FILE" || error "\n Sing-box $(text 80) $(text 38) \n"
+  render_extended_user_subscription "$OUTBOUND_REPLACE" "$NODE_REPLACE" "$JSON_FILE" || error "\n Sing-box $(text 80) $(text 38) \n"
   cp -f "$JSON_FILE" "$JSON_COPY_FILE"
   [ -s "$URI_FILE" ] && base64 -w0 "$URI_FILE" > "$URI_SUB_FILE"
   [ -s "$SHADOWROCKET_FILE" ] && base64 -w0 "$SHADOWROCKET_FILE" > "$SHADOWROCKET_SUB_FILE"
+  # These published files are served by an unprivileged nginx worker. The
+  # private account journal and API responses keep the provisioning umask.
+  chmod 755 "$OUT_DIR"
+  local PUBLISHED
+  for PUBLISHED in "$JSON_FILE" "$JSON_COPY_FILE" "$URI_FILE" "$URI_SUB_FILE" "$SHADOWROCKET_FILE" "$SHADOWROCKET_SUB_FILE"; do
+    [ ! -f "$PUBLISHED" ] || chmod 644 "$PUBLISHED"
+  done
 
   local SUBSCRIBE_ADDRESS=""
   if [ -n "$PORT_NGINX" ] && [ -n "$UUID_CONFIRM" ] && [ "$IS_SUB" = 'is_sub' ]; then
@@ -6220,6 +6637,8 @@ EOF
     warning "\n $(text 219):"
     cat "$SKIPPED_FILE"
   fi
+  [ -n "$SUBSCRIBE_ADDRESS" ] || warning "$(text 237)"
+  return 0
 }
 
 # 获取 Argo 临时隧道域名
@@ -7522,9 +7941,15 @@ version() {
   fi
 
   # Sing-box 版本检测
-  local ONLINE=$(get_sing_box_version)
-  grep -q '.' <<< "$ONLINE" || error " $(text 100) \n"
   local LOCAL=$(${SING_BOX_BIN} version | awk '/version/{print $NF}')
+  local ONLINE
+  if [[ "$LOCAL" = *-managed.* ]]; then
+    ONLINE=$LOCAL
+    info "$(text 241)"
+  else
+    ONLINE=$(get_sing_box_version)
+    grep -q '.' <<< "$ONLINE" || error " $(text 100) \n"
+  fi
   local APP=Sing-box && info "\n $(text 40) "
   [[ -n "$ONLINE" && "$ONLINE" != "$LOCAL" ]] && reading "\n $(text 9) " UPDATE[1] || info " $(text 41) "
 
@@ -7635,6 +8060,7 @@ menu_setting() {
     OPTION[11]="11.  $(text 69)"
     OPTION[12]="12.  $(text 76)"
     OPTION[13]="13.  $(text 215)"
+    OPTION[14]="14.  $(text 220) (${SHORTCUT_NAME} --EXT_ADD)"
 
     ACTION[1]() { export_list; exit 0; }
 
@@ -7671,6 +8097,7 @@ menu_setting() {
     ACTION[11]() { bash <(wget --no-check-certificate -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sba/main/sba.sh) -$L; exit; }
     ACTION[12]() { bash <(wget --no-check-certificate -qO- https://tcp.hy2.sh/); exit; }
     ACTION[13]() { extended_user_subscription; exit; }
+    ACTION[14]() { extended_user_add; exit; }
   else
     OPTION[1]="1.  $(text 115)"
     OPTION[2]="2.  $(text 34) + Argo + $(text 80) $(text 89)"
@@ -7797,8 +8224,8 @@ if [ -x "$WORK_DIR/jq" ] && [ -s "$WORK_DIR/conf/04_experimental.json" ] && [ -x
 fi
 
 # 传参
-[[ "${*^^}" =~ '-E'|'-K' ]] && L=E
-[[ "${*^^}" =~ '-C'|'-B'|'-L' ]] && L=C
+[[ " ${*^^} " =~ [[:space:]]-(E|K)([[:space:]]|$) ]] && L=E
+[[ " ${*^^} " =~ [[:space:]]-(C|B|L)([[:space:]]|$) ]] && L=C
 # 支持在 select_language 前识别 --LANGUAGE，避免 KV 无交互安装仍弹出语言选择。
 for ((PARAM_I=1; PARAM_I<=$#; PARAM_I++)); do
   eval "PARAM_V=\${${PARAM_I}}"
@@ -7891,6 +8318,9 @@ for z in ${!ALL_PARAMETER[@]}; do
       ;;
     -N )
       [ ! -s ${WORK_DIR}/list ] && error " Sing-box $(text 26) "; export_list; exit 0
+      ;;
+    --EXT_ADD|--EXT_USER_ADD )
+      extended_user_add_cli "${ALL_PARAMETER[@]:$((z+1))}"; exit $?
       ;;
     --EXT_SUB|--EXT_SUBSCRIBE|--EXT_USER_SUBSCRIBE )
       if [ $((z+1)) -lt ${#ALL_PARAMETER[@]} ] && [[ ! "${ALL_PARAMETER[$((z+1))]}" =~ ^- ]]; then

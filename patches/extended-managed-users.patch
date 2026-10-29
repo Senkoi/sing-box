@@ -1,0 +1,686 @@
+diff --git a/protocol/hysteria2/inbound.go b/protocol/hysteria2/inbound.go
+index 1017a5e..d062a42 100644
+--- a/protocol/hysteria2/inbound.go
++++ b/protocol/hysteria2/inbound.go
+@@ -28,14 +28,20 @@ func RegisterInbound(registry *inbound.Registry) {
+ 	inbound.Register[option.Hysteria2InboundOptions](registry, C.TypeHysteria2, NewInbound)
+ }
+ 
++// Capture identity at authentication time so dynamic updates cannot change the
++// owner of an existing connection or index a replaced user slice.
++type authenticatedUser struct {
++	Name  string
++	Index int
++}
++
+ type Inbound struct {
+ 	inbound.Adapter
+-	router       adapter.Router
+-	logger       log.ContextLogger
+-	listener     *listener.Listener
+-	tlsConfig    tls.ServerConfig
+-	service      *hysteria2.Service[int]
+-	userNameList []string
++	router    adapter.Router
++	logger    log.ContextLogger
++	listener  *listener.Listener
++	tlsConfig tls.ServerConfig
++	service   *hysteria2.Service[authenticatedUser]
+ }
+ 
+ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.Hysteria2InboundOptions) (adapter.Inbound, error) {
+@@ -113,7 +119,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	} else {
+ 		udpTimeout = C.UDPTimeout
+ 	}
+-	service, err := hysteria2.NewService[int](hysteria2.ServiceOptions{
++	service, err := hysteria2.NewService[authenticatedUser](hysteria2.ServiceOptions{
+ 		Context:               ctx,
+ 		Logger:                logger,
+ 		BrutalDebug:           options.BrutalDebug,
+@@ -129,17 +135,14 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	userList := make([]int, 0, len(options.Users))
+-	userNameList := make([]string, 0, len(options.Users))
++	userList := make([]authenticatedUser, 0, len(options.Users))
+ 	userPasswordList := make([]string, 0, len(options.Users))
+ 	for index, user := range options.Users {
+-		userList = append(userList, index)
+-		userNameList = append(userNameList, user.Name)
++		userList = append(userList, authenticatedUser{Name: user.Name, Index: index})
+ 		userPasswordList = append(userPasswordList, user.Password)
+ 	}
+ 	service.UpdateUsers(userList, userPasswordList)
+ 	inbound.service = service
+-	inbound.userNameList = userNameList
+ 	return inbound, nil
+ }
+ 
+@@ -155,8 +158,8 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, source M.S
+ 	metadata.Source = source
+ 	metadata.Destination = destination
+ 	h.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
+-	userID, _ := auth.UserFromContext[int](ctx)
+-	if userName := h.userNameList[userID]; userName != "" {
++	userInfo, _ := auth.UserFromContext[authenticatedUser](ctx)
++	if userName := userInfo.Name; userName != "" {
+ 		metadata.User = userName
+ 		h.logger.InfoContext(ctx, "[", userName, "] inbound connection to ", metadata.Destination)
+ 	} else {
+@@ -177,8 +180,8 @@ func (h *Inbound) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
+ 	metadata.Source = source
+ 	metadata.Destination = destination
+ 	h.logger.InfoContext(ctx, "inbound packet connection from ", metadata.Source)
+-	userID, _ := auth.UserFromContext[int](ctx)
+-	if userName := h.userNameList[userID]; userName != "" {
++	userInfo, _ := auth.UserFromContext[authenticatedUser](ctx)
++	if userName := userInfo.Name; userName != "" {
+ 		metadata.User = userName
+ 		h.logger.InfoContext(ctx, "[", userName, "] inbound packet connection to ", metadata.Destination)
+ 	} else {
+@@ -213,8 +216,8 @@ func (h *Inbound) Close() error {
+ }
+ 
+ func (h *Inbound) UpdateUsers(users []option.Hysteria2User) {
+-	h.service.UpdateUsers(common.MapIndexed(users, func(index int, _ option.Hysteria2User) int {
+-		return index
++	h.service.UpdateUsers(common.MapIndexed(users, func(index int, it option.Hysteria2User) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(users, func(it option.Hysteria2User) string {
+ 		return it.Password
+ 	}))
+diff --git a/protocol/limiter/bandwidth/outbound.go b/protocol/limiter/bandwidth/outbound.go
+index efa2f08..a447dd5 100644
+--- a/protocol/limiter/bandwidth/outbound.go
++++ b/protocol/limiter/bandwidth/outbound.go
+@@ -119,7 +119,7 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
+ 
+ func (h *Outbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	ctx = adapter.WithContext(ctx, &metadata)
+-	conn, err := h.strategy.wrapConn(ctx, conn, &metadata, false)
++	wrappedConn, err := h.strategy.wrapConn(ctx, conn, &metadata, false)
+ 	if err != nil {
+ 		h.logger.ErrorContext(ctx, err)
+ 		N.CloseOnHandshakeFailure(conn, onClose, err)
+@@ -127,7 +127,7 @@ func (h *Outbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata
+ 	}
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	h.router.RouteConnectionEx(ctx, conn, metadata, onClose)
++	h.router.RouteConnectionEx(ctx, wrappedConn, metadata, onClose)
+ 	return
+ }
+ 
+diff --git a/protocol/limiter/traffic/outbound.go b/protocol/limiter/traffic/outbound.go
+index 0d7a329..bf0a7d7 100644
+--- a/protocol/limiter/traffic/outbound.go
++++ b/protocol/limiter/traffic/outbound.go
+@@ -94,7 +94,7 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
+ }
+ 
+ func (h *Outbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+-	conn, err := h.strategy.wrapConn(ctx, conn, &metadata, false)
++	wrappedConn, err := h.strategy.wrapConn(ctx, conn, &metadata, false)
+ 	if err != nil {
+ 		if err.Error() != "traffic limit exceeded" {
+ 			h.logger.ErrorContext(ctx, err)
+@@ -104,7 +104,7 @@ func (h *Outbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata
+ 	}
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	h.router.RouteConnectionEx(ctx, conn, metadata, onClose)
++	h.router.RouteConnectionEx(ctx, wrappedConn, metadata, onClose)
+ }
+ 
+ func (h *Outbound) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+diff --git a/protocol/trojan/inbound.go b/protocol/trojan/inbound.go
+index e089018..b0edbf7 100644
+--- a/protocol/trojan/inbound.go
++++ b/protocol/trojan/inbound.go
+@@ -29,13 +29,19 @@ func RegisterInbound(registry *inbound.Registry) {
+ 
+ var _ adapter.TCPInjectableInbound = (*Inbound)(nil)
+ 
++// Capture identity at authentication time so dynamic updates cannot change the
++// owner of an existing connection or index a replaced user slice.
++type authenticatedUser struct {
++	Name  string
++	Index int
++}
++
+ type Inbound struct {
+ 	inbound.Adapter
+ 	router                   adapter.ConnectionRouterEx
+ 	logger                   log.ContextLogger
+ 	listener                 *listener.Listener
+-	service                  *trojan.Service[int]
+-	users                    []option.TrojanUser
++	service                  *trojan.Service[authenticatedUser]
+ 	tlsConfig                tls.ServerConfig
+ 	fallbackAddr             M.Socksaddr
+ 	fallbackAddrTLSNextProto map[string]M.Socksaddr
+@@ -47,7 +53,6 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		Adapter: inbound.NewAdapter(C.TypeTrojan, tag),
+ 		router:  router,
+ 		logger:  logger,
+-		users:   options.Users,
+ 	}
+ 	if options.TLS != nil {
+ 		tlsConfig, err := tls.NewServerWithOptions(tls.ServerOptions{
+@@ -86,9 +91,9 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		}
+ 		fallbackHandler = adapter.NewUpstreamContextHandlerEx(inbound.fallbackConnection, nil)
+ 	}
+-	service := trojan.NewService[int](adapter.NewUpstreamContextHandlerEx(inbound.newConnection, inbound.newPacketConnection), fallbackHandler, logger)
+-	err := service.UpdateUsers(common.MapIndexed(options.Users, func(index int, it option.TrojanUser) int {
+-		return index
++	service := trojan.NewService[authenticatedUser](adapter.NewUpstreamContextHandlerEx(inbound.newConnection, inbound.newPacketConnection), fallbackHandler, logger)
++	err := service.UpdateUsers(common.MapIndexed(options.Users, func(index int, it option.TrojanUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(options.Users, func(it option.TrojanUser) string {
+ 		return it.Password
+ 	}))
+@@ -165,8 +170,8 @@ func (h *Inbound) Close() error {
+ }
+ 
+ func (h *Inbound) UpdateUsers(users []option.TrojanUser) {
+-	h.service.UpdateUsers(common.MapIndexed(users, func(index int, _ option.TrojanUser) int {
+-		return index
++	h.service.UpdateUsers(common.MapIndexed(users, func(index int, it option.TrojanUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(users, func(it option.TrojanUser) string {
+ 		return it.Password
+ 	}))
+@@ -192,14 +197,14 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata a
+ func (h *Inbound) newConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+@@ -210,14 +215,14 @@ func (h *Inbound) newConnection(ctx context.Context, conn net.Conn, metadata ada
+ func (h *Inbound) newPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+diff --git a/protocol/tuic/inbound.go b/protocol/tuic/inbound.go
+index e4ff726..1cb53db 100644
+--- a/protocol/tuic/inbound.go
++++ b/protocol/tuic/inbound.go
+@@ -27,14 +27,20 @@ func RegisterInbound(registry *inbound.Registry) {
+ 	inbound.Register[option.TUICInboundOptions](registry, C.TypeTUIC, NewInbound)
+ }
+ 
++// Capture identity at authentication time so dynamic updates cannot change the
++// owner of an existing connection or index a replaced user slice.
++type authenticatedUser struct {
++	Name  string
++	Index int
++}
++
+ type Inbound struct {
+ 	inbound.Adapter
+-	router       adapter.ConnectionRouterEx
+-	logger       log.ContextLogger
+-	listener     *listener.Listener
+-	tlsConfig    tls.ServerConfig
+-	server       *tuic.Service[int]
+-	userNameList []string
++	router    adapter.ConnectionRouterEx
++	logger    log.ContextLogger
++	listener  *listener.Listener
++	tlsConfig tls.ServerConfig
++	server    *tuic.Service[authenticatedUser]
+ }
+ 
+ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TUICInboundOptions) (adapter.Inbound, error) {
+@@ -63,7 +69,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	} else {
+ 		udpTimeout = C.UDPTimeout
+ 	}
+-	service, err := tuic.NewService[int](tuic.ServiceOptions{
++	service, err := tuic.NewService[authenticatedUser](tuic.ServiceOptions{
+ 		Context:           ctx,
+ 		Logger:            logger,
+ 		TLSConfig:         tlsConfig,
+@@ -77,8 +83,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	var userList []int
+-	var userNameList []string
++	var userList []authenticatedUser
+ 	var userUUIDList [][16]byte
+ 	var userPasswordList []string
+ 	for index, user := range options.Users {
+@@ -89,14 +94,12 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		if err != nil {
+ 			return nil, E.Cause(err, "invalid uuid for user ", index)
+ 		}
+-		userList = append(userList, index)
+-		userNameList = append(userNameList, user.Name)
++		userList = append(userList, authenticatedUser{Name: user.Name, Index: index})
+ 		userUUIDList = append(userUUIDList, userUUID)
+ 		userPasswordList = append(userPasswordList, user.Password)
+ 	}
+ 	service.UpdateUsers(userList, userUUIDList, userPasswordList)
+ 	inbound.server = service
+-	inbound.userNameList = userNameList
+ 	return inbound, nil
+ }
+ 
+@@ -112,8 +115,8 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, source M.S
+ 	metadata.Source = source
+ 	metadata.Destination = destination
+ 	h.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
+-	userID, _ := auth.UserFromContext[int](ctx)
+-	if userName := h.userNameList[userID]; userName != "" {
++	userInfo, _ := auth.UserFromContext[authenticatedUser](ctx)
++	if userName := userInfo.Name; userName != "" {
+ 		metadata.User = userName
+ 		h.logger.InfoContext(ctx, "[", userName, "] inbound connection to ", metadata.Destination)
+ 	} else {
+@@ -134,8 +137,8 @@ func (h *Inbound) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
+ 	metadata.Source = source
+ 	metadata.Destination = destination
+ 	h.logger.InfoContext(ctx, "inbound packet connection from ", metadata.Source)
+-	userID, _ := auth.UserFromContext[int](ctx)
+-	if userName := h.userNameList[userID]; userName != "" {
++	userInfo, _ := auth.UserFromContext[authenticatedUser](ctx)
++	if userName := userInfo.Name; userName != "" {
+ 		metadata.User = userName
+ 		h.logger.InfoContext(ctx, "[", userName, "] inbound packet connection to ", metadata.Destination)
+ 	} else {
+@@ -170,8 +173,8 @@ func (h *Inbound) Close() error {
+ }
+ 
+ func (h *Inbound) UpdateUsers(users []option.TUICUser) {
+-	h.server.UpdateUsers(common.MapIndexed(users, func(index int, _ option.TUICUser) int {
+-		return index
++	h.server.UpdateUsers(common.MapIndexed(users, func(index int, it option.TUICUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(users, func(it option.TUICUser) [16]byte {
+ 		return [16]byte(uuid.Must(uuid.FromString(it.UUID)).Bytes())
+ 	}), common.Map(users, func(it option.TUICUser) string {
+diff --git a/protocol/vless/inbound.go b/protocol/vless/inbound.go
+index 9104f47..31c3dab 100644
+--- a/protocol/vless/inbound.go
++++ b/protocol/vless/inbound.go
+@@ -37,14 +37,20 @@ func RegisterInbound(registry *inbound.Registry) {
+ 
+ var _ adapter.TCPInjectableInbound = (*Inbound)(nil)
+ 
++// Capture identity at authentication time so dynamic updates cannot change the
++// owner of an existing connection or index a replaced user slice.
++type authenticatedUser struct {
++	Name  string
++	Index int
++}
++
+ type Inbound struct {
+ 	inbound.Adapter
+ 	ctx        context.Context
+ 	router     adapter.ConnectionRouterEx
+ 	logger     logger.ContextLogger
+ 	listener   *listener.Listener
+-	users      []option.VLESSUser
+-	service    *vless.Service[int]
++	service    *vless.Service[authenticatedUser]
+ 	tlsConfig  tls.ServerConfig
+ 	transport  adapter.V2RayServerTransport
+ 	decryption *encryption.ServerInstance
+@@ -56,19 +62,18 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		ctx:     ctx,
+ 		router:  uot.NewRouter(router, logger),
+ 		logger:  logger,
+-		users:   options.Users,
+ 	}
+ 	var err error
+ 	inbound.router, err = mux.NewRouterWithOptions(inbound.router, logger, common.PtrValueOrDefault(options.Multiplex))
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	service := vless.NewService[int](logger, adapter.NewUpstreamContextHandlerEx(inbound.newConnectionEx, inbound.newPacketConnectionEx))
+-	service.UpdateUsers(common.MapIndexed(inbound.users, func(index int, _ option.VLESSUser) int {
+-		return index
+-	}), common.Map(inbound.users, func(it option.VLESSUser) string {
++	service := vless.NewService[authenticatedUser](logger, adapter.NewUpstreamContextHandlerEx(inbound.newConnectionEx, inbound.newPacketConnectionEx))
++	service.UpdateUsers(common.MapIndexed(options.Users, func(index int, it option.VLESSUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
++	}), common.Map(options.Users, func(it option.VLESSUser) string {
+ 		return it.UUID
+-	}), common.Map(inbound.users, func(it option.VLESSUser) string {
++	}), common.Map(options.Users, func(it option.VLESSUser) string {
+ 		return it.Flow
+ 	}))
+ 	inbound.service = service
+@@ -168,9 +173,8 @@ func (h *Inbound) Close() error {
+ }
+ 
+ func (h *Inbound) UpdateUsers(users []option.VLESSUser) {
+-	h.users = users
+-	h.service.UpdateUsers(common.MapIndexed(users, func(index int, _ option.VLESSUser) int {
+-		return index
++	h.service.UpdateUsers(common.MapIndexed(users, func(index int, it option.VLESSUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(users, func(it option.VLESSUser) string {
+ 		return it.UUID
+ 	}), common.Map(users, func(it option.VLESSUser) string {
+@@ -216,14 +220,14 @@ func (h *Inbound) newConnectionExInternal(ctx context.Context, conn net.Conn, me
+ func (h *Inbound) newConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+@@ -234,14 +238,14 @@ func (h *Inbound) newConnectionEx(ctx context.Context, conn net.Conn, metadata a
+ func (h *Inbound) newPacketConnectionEx(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+diff --git a/protocol/vmess/inbound.go b/protocol/vmess/inbound.go
+index 489a688..11c2a57 100644
+--- a/protocol/vmess/inbound.go
++++ b/protocol/vmess/inbound.go
+@@ -34,14 +34,20 @@ func RegisterInbound(registry *inbound.Registry) {
+ 
+ var _ adapter.TCPInjectableInbound = (*Inbound)(nil)
+ 
++// Capture identity at authentication time so dynamic updates cannot change the
++// owner of an existing connection or index a replaced user slice.
++type authenticatedUser struct {
++	Name  string
++	Index int
++}
++
+ type Inbound struct {
+ 	inbound.Adapter
+ 	ctx       context.Context
+ 	router    adapter.ConnectionRouterEx
+ 	logger    logger.ContextLogger
+ 	listener  *listener.Listener
+-	service   *vmess.Service[int]
+-	users     []option.VMessUser
++	service   *vmess.Service[authenticatedUser]
+ 	tlsConfig tls.ServerConfig
+ 	transport adapter.V2RayServerTransport
+ }
+@@ -52,7 +58,6 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		ctx:     ctx,
+ 		router:  uot.NewRouter(router, logger),
+ 		logger:  logger,
+-		users:   options.Users,
+ 	}
+ 	var err error
+ 	inbound.router, err = mux.NewRouterWithOptions(inbound.router, logger, common.PtrValueOrDefault(options.Multiplex))
+@@ -66,10 +71,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	if options.Transport != nil && options.Transport.Type != "" {
+ 		serviceOptions = append(serviceOptions, vmess.ServiceWithDisableHeaderProtection())
+ 	}
+-	service := vmess.NewService[int](adapter.NewUpstreamContextHandlerEx(inbound.newConnectionEx, inbound.newPacketConnectionEx), serviceOptions...)
++	service := vmess.NewService[authenticatedUser](adapter.NewUpstreamContextHandlerEx(inbound.newConnectionEx, inbound.newPacketConnectionEx), serviceOptions...)
+ 	inbound.service = service
+-	err = service.UpdateUsers(common.MapIndexed(options.Users, func(index int, it option.VMessUser) int {
+-		return index
++	err = service.UpdateUsers(common.MapIndexed(options.Users, func(index int, it option.VMessUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(options.Users, func(it option.VMessUser) string {
+ 		return it.UUID
+ 	}), common.Map(options.Users, func(it option.VMessUser) int {
+@@ -154,8 +159,8 @@ func (h *Inbound) Close() error {
+ }
+ 
+ func (h *Inbound) UpdateUsers(users []option.VMessUser) {
+-	h.service.UpdateUsers(common.MapIndexed(users, func(index int, _ option.VMessUser) int {
+-		return index
++	h.service.UpdateUsers(common.MapIndexed(users, func(index int, it option.VMessUser) authenticatedUser {
++		return authenticatedUser{Name: it.Name, Index: index}
+ 	}), common.Map(users, func(it option.VMessUser) string {
+ 		return it.UUID
+ 	}), common.Map(users, func(it option.VMessUser) int {
+@@ -183,14 +188,14 @@ func (h *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata a
+ func (h *Inbound) newConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+@@ -201,14 +206,14 @@ func (h *Inbound) newConnectionEx(ctx context.Context, conn net.Conn, metadata a
+ func (h *Inbound) newPacketConnectionEx(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+ 	metadata.Inbound = h.Tag()
+ 	metadata.InboundType = h.Type()
+-	userIndex, loaded := auth.UserFromContext[int](ctx)
++	userInfo, loaded := auth.UserFromContext[authenticatedUser](ctx)
+ 	if !loaded {
+ 		N.CloseOnHandshakeFailure(conn, onClose, os.ErrInvalid)
+ 		return
+ 	}
+-	user := h.users[userIndex].Name
++	user := userInfo.Name
+ 	if user == "" {
+-		user = F.ToString(userIndex)
++		user = F.ToString(userInfo.Index)
+ 	} else {
+ 		metadata.User = user
+ 	}
+diff --git a/service/manager/service.go b/service/manager/service.go
+index ee8471f..47cdd0f 100644
+--- a/service/manager/service.go
++++ b/service/manager/service.go
+@@ -79,9 +79,6 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
+ 			if user.UUID == "" {
+ 				sl.ReportError(user.UUID, "uuid", "UUID", "required", "")
+ 			}
+-			if user.AlterID == 0 {
+-				sl.ReportError(user.AlterID, "alter_id", "AlterID", "required", "")
+-			}
+ 		case "trojan", "shadowsocks", "hysteria", "hysteria2":
+ 			if user.Password == "" {
+ 				sl.ReportError(user.Password, "password", "Password", "required", "")
+diff --git a/service/node/limiter/bandwidth.go b/service/node/limiter/bandwidth.go
+index b0fd369..1a361f0 100644
+--- a/service/node/limiter/bandwidth.go
++++ b/service/node/limiter/bandwidth.go
+@@ -2,6 +2,7 @@ package limiter
+ 
+ import (
+ 	"context"
++	"maps"
+ 	"slices"
+ 	"sync"
+ 
+@@ -83,7 +84,7 @@ type BandwidthLimiterStrategyManager struct {
+ }
+ 
+ func (i *BandwidthLimiterStrategyManager) postUpdate() {
+-	i.strategy.UpdateStrategies(i.strategiesMap)
++	i.strategy.UpdateStrategies(maps.Clone(i.strategiesMap))
+ }
+ 
+ func (i *BandwidthLimiterStrategyManager) UpdateBandwidthLimiter(limiter CM.BandwidthLimiter) {
+diff --git a/service/node/limiter/connection.go b/service/node/limiter/connection.go
+index 02e8c3f..63cfc57 100644
+--- a/service/node/limiter/connection.go
++++ b/service/node/limiter/connection.go
+@@ -2,6 +2,7 @@ package limiter
+ 
+ import (
+ 	"context"
++	"maps"
+ 	"sync"
+ 	"time"
+ 
+@@ -83,7 +84,7 @@ type ConnectionLimiterStrategyManager struct {
+ }
+ 
+ func (i *ConnectionLimiterStrategyManager) postUpdate() {
+-	i.strategy.UpdateStrategies(i.strategiesMap)
++	i.strategy.UpdateStrategies(maps.Clone(i.strategiesMap))
+ }
+ 
+ func (i *ConnectionLimiterStrategyManager) UpdateConnectionLimiter(limiter CM.ConnectionLimiter) {
+diff --git a/service/node/limiter/rate.go b/service/node/limiter/rate.go
+index fb6be63..bd02e6d 100644
+--- a/service/node/limiter/rate.go
++++ b/service/node/limiter/rate.go
+@@ -2,6 +2,7 @@ package limiter
+ 
+ import (
+ 	"context"
++	"maps"
+ 	"sync"
+ 	"time"
+ 
+@@ -81,10 +82,13 @@ type RateLimiterStrategyManager struct {
+ }
+ 
+ func (i *RateLimiterStrategyManager) postUpdate() {
+-	i.strategy.UpdateStrategies(i.strategiesMap)
++	i.strategy.UpdateStrategies(maps.Clone(i.strategiesMap))
+ }
+ 
+ func (i *RateLimiterStrategyManager) createStrategy(limiter CM.RateLimiter) (rate.RateStrategy, error) {
++	if limiter.Strategy == "bypass" {
++		return rate.CreateStrategy("bypass", "", 0, 0)
++	}
+ 	interval, err := time.ParseDuration(limiter.Interval)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/service/node/limiter/traffic.go b/service/node/limiter/traffic.go
+index 74901ec..12bd875 100644
+--- a/service/node/limiter/traffic.go
++++ b/service/node/limiter/traffic.go
+@@ -2,6 +2,7 @@ package limiter
+ 
+ import (
+ 	"context"
++	"maps"
+ 	"sync"
+ 	"time"
+ 
+@@ -110,7 +111,7 @@ type TrafficLimiterStrategyManager struct {
+ }
+ 
+ func (i *TrafficLimiterStrategyManager) postUpdate() {
+-	i.strategy.UpdateStrategies(i.strategiesMap)
++	i.strategy.UpdateStrategies(maps.Clone(i.strategiesMap))
+ }
+ 
+ func (i *TrafficLimiterStrategyManager) UpdateTrafficLimiter(limiter CM.TrafficLimiter) {
+@@ -131,6 +132,7 @@ func (i *TrafficLimiterStrategyManager) UpdateTrafficLimiters(limiters []CM.Traf
+ 	i.mtx.Lock()
+ 	defer i.mtx.Unlock()
+ 	clear(i.strategiesMap)
++	clear(i.limiters)
+ 	newStrategiesMap := make(map[string]traffic.TrafficStrategy)
+ 	for _, limiter := range limiters {
+ 		trafficLimiter := NewTrafficLimiter(i.manager.nodeManager, limiter)
+@@ -150,6 +152,7 @@ func (i *TrafficLimiterStrategyManager) DeleteTrafficLimiter(username string) {
+ 	i.mtx.Lock()
+ 	defer i.mtx.Unlock()
+ 	delete(i.strategiesMap, username)
++	delete(i.limiters, username)
+ 	i.postUpdate()
+ }
+ 
+diff --git a/service/node/service.go b/service/node/service.go
+index b7d40d8..5b1ad08 100644
+--- a/service/node/service.go
++++ b/service/node/service.go
+@@ -159,25 +159,19 @@ func (s *Service) UpdateUser(user CM.User) {
+ func (s *Service) UpdateUsers(users []CM.User) {
+ 	s.mtx.Lock()
+ 	defer s.mtx.Unlock()
+-	typedUsers := make(map[string][]CM.User)
+-	for _, user := range users {
+-		u, ok := typedUsers[user.Type]
+-		if !ok {
+-			typedUsers[user.Type] = make([]CM.User, 0)
+-		}
+-		typedUsers[user.Type] = append(u, user)
+-	}
+-	for type_, users := range typedUsers {
+-		manager, ok := s.inboundManagers[type_]
+-		if !ok {
+-			continue
+-		}
+-		for _, user := range users {
+-			userManager, ok := manager.GetUserManager(user.Inbound)
++	for type_, manager := range s.inboundManagers {
++		for _, tag := range manager.GetUserManagerTags() {
++			userManager, ok := manager.GetUserManager(tag)
+ 			if !ok {
+ 				continue
+ 			}
+-			userManager.UpdateUsers(users)
++			filtered := make([]CM.User, 0)
++			for _, user := range users {
++				if user.Type == type_ && user.Inbound == tag {
++					filtered = append(filtered, user)
++				}
++			}
++			userManager.UpdateUsers(filtered)
+ 		}
+ 	}
+ }

@@ -2,11 +2,39 @@
 
 本分支使用 sing-box-extended 内核，保留管理端/节点端、Extended 用户订阅及 Shadowrocket 订阅二维码，并同步上游 v1.3.28 的脚本改进。
 
-开发回归检查（需要 Bash、jq、OpenSSL 和匹配的 sing-box-extended 内核）：
+开发回归检查（需要 Bash、jq、OpenSSL、curl、Python 3 和本仓库修复内核）：
 
 ```bash
+./tools/build-managed-core.sh /path/to/sing-box
 SING_BOX_TEST_BIN=/path/to/sing-box bash tests/merge-regression.sh
+SING_BOX_TEST_BIN=/path/to/sing-box python3 tests/extended-users.py
 ```
+
+### 一键开通 Extended 用户
+
+同机管理端和节点端启用后，运行 `sb --EXT_ADD`，按提示填写用户名、选择协议、总流量配额、限速和并发连接数。也可以从 `sb` 主菜单或 `sb -d` 的「一键开通用户并生成订阅」进入。
+
+非交互示例：
+
+```bash
+sb --EXT_ADD alice --EXT_PROTOCOLS bcgl --EXT_QUOTA_GB 100 --EXT_SPEED_MBPS 50 --EXT_CONNECTIONS 20
+```
+
+该命令为 alice 开通 Reality、Hysteria2、Trojan、AnyTLS，**所有所选协议合计共享 100 GB 总流量、50 Mbps 带宽和 20 个并发连接**，不会按协议重复分配额度。三个限额参数的 `0` 表示不限；流量按上传与下载合计，不会自动按月重置。
+
+协议字母与安装参数一致：`b` Reality、`c` Hysteria2、`d` TUIC、`g` Trojan、`h` VMess WS、`i` VLESS WS TLS、`j` H2 Reality、`k` gRPC Reality、`l` AnyTLS、`m` Naive；`a` 或省略表示全部已安装且可托管的协议。Shadowsocks、ShadowTLS 不支持管理端动态用户，会排除在托管范围之外。Naive 需要客户端具备相应支持。
+
+脚本自动初始化分组、注册节点、创建协议用户和共享管控策略，并导出 sing-box 配置、Shadowrocket 订阅和二维码。无需再到管理端逐项开通用户权限。管理端、节点 API 使用现有配置。
+
+首次开通会自动构建并切换到 `1.13.14-extended-2.5.3-managed.1`，修复 ext 动态用户身份丢失、不同入站混合同名用户、VMess AEAD 校验、不限频策略及超额连接导致崩溃的问题。构建要求 Linux amd64/arm64/armv6/7、git、curl、tar、sha256sum、Node.js 18+ 和 npm，以及数 GB 可用磁盘；Go 工具链会自动下载并校验。首次构建可能耗时数分钟，后续开通直接复用内核。构建失败不会创建用户；切换内核前检查配置，服务启动失败会恢复原内核和配置。旧内核保存在 `${WORK_DIR}/sing-box.pre-managed`，`sb -v` 保留修复内核，避免普通 ext 发行版覆盖这些修复。
+
+订阅已开启时，会输出可访问的订阅地址和二维码；未开启时输出本地配置文件，在 `sb -d` 开启订阅后执行 `sb --EXT_SUB alice` 即可取得订阅二维码。服务器地址从现有配置读取；无法读取时，可在命令前部指定，例如 `sb --SERVER_IP proxy.example.com --EXT_ADD alice`。
+
+重复执行同名的一键开通命令只重新导出，保留凭据、配额和已用流量；修改配额或重置流量请使用管理端。已有手工创建的同名用户不会被覆盖。账户记录保存在 `${WORK_DIR}/accounts/`，订阅文件在 `${WORK_DIR}/subscribe/ext/`；API 中途失败时会回滚本次新建资源，回滚未完成会在账户目录留下资源清单。
+
+内核约每 5 秒将流量用量回写管理端；进程异常退出可能丢失尚未回写的用量。本次实测覆盖九种非 Naive 协议变体的实际连接、共享额度耗尽、限速参数、跨协议并发限制、重启恢复及 API 失败回滚；没有进行手机端扫码测试。
+
+内核源码固定为 ext 的 `c243a5b6e5364e4447b706ffcc84b2b68b7655a7`，补丁保存在 `patches/extended-managed-users.patch`，可用 `tools/build-managed-core.sh OUTPUT [CACHE_DIRECTORY]` 独立构建。脚本仅注册实际支持动态用户的入站；同一用户名在各协议上使用一套共享策略。受托管入站的流量优先经过限流链，避免被原有 direct/WARP 路由绕过。
 
 * * *
 

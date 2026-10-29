@@ -1,0 +1,2 @@
+# Unified diff context prefixes must preserve spaces before Go indentation.
+patches/*.patch -whitespace

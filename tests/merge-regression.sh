@@ -42,7 +42,7 @@ fixture() {
 
 (
   for L in E C; do
-    for index in {0..219}; do
+    for index in {0..241}; do
       test -n "$(text "$index")"
     done
   done
@@ -61,7 +61,9 @@ echo 'PASS: upstream and Extended translations have separate, complete indices'
   write_extended_node_route
   "$CORE" check -C "$WORK_DIR/conf"
   jq -e '[.services[].type] | index("manager") != null and index("node") != null' "$WORK_DIR/conf/08_services.json" >/dev/null
-  jq -e '.route.final == "traffic-limiter"' "$WORK_DIR/conf/03_route.json" >/dev/null
+  jq -e '.route.rules[0].outbound == "traffic-limiter" and
+    (.route.rules[0].inbound | index("cloud-dev shadowsocks") == null and index("cloud-dev ShadowTLS") == null)' "$WORK_DIR/conf/03_route.json" >/dev/null
+  jq -e '[.services[] | select(.type == "node" and .tag == "my-node")][0].inbounds | length == 9' "$WORK_DIR/conf/08_services.json" >/dev/null
 )
 echo 'PASS: Extended manager, node and limiter configs remain compatible'
 
@@ -104,17 +106,9 @@ EOF
   cat > "$TEMP_DIR/sing-box-template" <<'EOF'
 {"dns":{"servers":[]},"outbounds":["<OUTBOUND_REPLACE>",{"type":"direct","tag":"direct"}],"route":{"final":"direct"},"experimental":{},"test_nodes":["<NODE_REPLACE>"]}
 EOF
-  wget() {
-    [[ "${!#}" == 'http://127.0.0.1:8080/manager/v1/users' ]] || return 1
-    local output
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = -qO ]; then output=$2; break; fi
-      shift
-    done
-    cp "$TEMP_DIR/users.json" "$output"
-  }
+  extended_api_request() { cp "$TEMP_DIR/users.json" "$4"; }
   extended_user_subscription alice noninteractive > "$TEST_ROOT/subscription-output.log"
-  jq -e '.outbounds[0].type == "vless"' "$WORK_DIR/subscribe/ext/alice.json" >/dev/null
+  jq -e '[.outbounds[] | select(.type == "vless")] | length == 1' "$WORK_DIR/subscribe/ext/alice.json" >/dev/null
   grep -q '^vless://' "$WORK_DIR/subscribe/ext/alice.txt"
   base64 -d "$WORK_DIR/subscribe/ext/alice.shadowrocket" | cmp - "$WORK_DIR/subscribe/ext/alice.shadowrocket.txt"
   grep -q "data=http://127.0.0.1:18080/$UUID_CONFIRM/ext/alice.shadowrocket" "$WORK_DIR/subscribe/ext/alice.shadowrocket.qr"
